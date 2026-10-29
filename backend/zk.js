@@ -6,7 +6,14 @@ const Attendance = require('./models/Attendance');
 const errMsg = (e) => (e && (e.message || (e.err && e.err.message))) || String(e);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Device ek connection chhere dite shomoy nay. Duto connection-er majhe ei gap rakhi.
+const GAP_MS = 2000;
+let lastEnd = 0;
+
 async function doWithDevice(fn) {
+  const wait = lastEnd + GAP_MS - Date.now();
+  if (wait > 0) await sleep(wait);
+
   const zk = new ZKLib(process.env.ZK_IP, Number(process.env.ZK_PORT || 4370), 60000, 4000);
   let timer;
   try {
@@ -18,6 +25,7 @@ async function doWithDevice(fn) {
   } finally {
     clearTimeout(timer);
     try { await zk.disconnect(); } catch (e) {}
+    lastEnd = Date.now();
   }
 }
 

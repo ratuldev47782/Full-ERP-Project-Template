@@ -46,13 +46,34 @@ const auth = (req, res, next) => {
 };
 
 // ---- Device ----
-app.get('/api/status', auth, async (req, res) => {
-  try {
-    const info = await getInfo();
-    res.json({ connected: true, ip: process.env.ZK_IP, port: process.env.ZK_PORT, info });
-  } catch (e) {
-    res.json({ connected: false, ip: process.env.ZK_IP, port: process.env.ZK_PORT, error: e.message || String(e) });
+// Status 30 second cache kora thake, jate dashboard reload-e bar bar device-e connect na kore.
+// Ekshathe onek request ashleo ekta-i device check cholbe.
+const STATUS_TTL = 30000;
+let statusCache = { at: 0, data: null };
+let statusPromise = null;
+
+function checkDeviceStatus() {
+  if (statusCache.data && Date.now() - statusCache.at < STATUS_TTL) {
+    return Promise.resolve(statusCache.data);
   }
+  if (!statusPromise) {
+    const base = { ip: process.env.ZK_IP, port: process.env.ZK_PORT };
+    statusPromise = getInfo()
+      .then((info) => ({ connected: true, ...base, info }))
+      .catch((e) => ({ connected: false, ...base, error: e.message || String(e) }))
+      .then((data) => {
+        statusCache = { at: Date.now(), data };
+        return data;
+      })
+      .finally(() => {
+        statusPromise = null;
+      });
+  }
+  return statusPromise;
+}
+
+app.get('/api/status', auth, async (req, res) => {
+  res.json(await checkDeviceStatus());
 });
 
 // Ek shomoy ekta-i sync cholbe. Sync cholar shomoy keu abar sync chaile
@@ -61,9 +82,18 @@ app.get('/api/status', auth, async (req, res) => {
 let syncPromise = null;
 function runSync() {
   if (!syncPromise) {
-    syncPromise = syncDevice().finally(() => {
-      syncPromise = null;
-    });
+    syncPromise = syncDevice()
+      .then((r) => {
+        // sync sofol mane device connected, status cache fresh kore dao
+        statusCache = {
+          at: Date.now(),
+          data: { connected: true, ip: process.env.ZK_IP, port: process.env.ZK_PORT },
+        };
+        return r;
+      })
+      .finally(() => {
+        syncPromise = null;
+      });
   }
   return syncPromise;
 }
@@ -186,7 +216,7 @@ app.delete('/api/employees/:id', auth, async (req, res) => {
 });
 
 // ---- Auto sync ----
-const mins = Number(process.env.SYNC_MINUTES || 5);
+const mins = Math.max(1, Number(process.env.SYNC_MINUTES || 5));
 cron.schedule(`*/${mins} * * * *`, async () => {
   if (syncPromise) return; // previous sync still running, skip this tick
   try {
