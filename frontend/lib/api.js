@@ -13,6 +13,9 @@ export async function api(path, options = {}) {
     window.location.href = '/login';
     throw new Error('Unauthorized');
   }
+  if (!res.headers.get('content-type')?.includes('application/json')) {
+    throw new Error(`API returned a non-JSON response (HTTP ${res.status}). Check the API URL and backend route.`);
+  }
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Request failed');
   return data;

@@ -12,7 +12,7 @@ const cron = require('node-cron');
 const Attendance = require('./models/Attendance');
 const Employee = require('./models/Employee');
 const { getInfo, syncDevice } = require('./zk');
-const { dailyReport } = require('./daily');
+const { dailyReport, monthlyReport } = require('./daily');
 
 const app = express();
 app.use(cors());
@@ -103,6 +103,26 @@ const dupMsg = (e) =>
 app.get('/api/employees', auth, async (req, res) => {
   try {
     res.json(await Employee.find().sort({ employeeId: 1 }).lean());
+  } catch (e) {
+    res.status(500).json({ error: e.message || String(e) });
+  }
+});
+
+app.get('/api/employees/:id/monthly', auth, async (req, res) => {
+  const { id } = req.params;
+  const { month } = req.query;
+
+  if (!mongoose.isValidObjectId(id)) {
+    return res.status(400).json({ error: 'Invalid employee ID' });
+  }
+  if (typeof month !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+    return res.status(400).json({ error: 'Month must be in YYYY-MM format' });
+  }
+
+  try {
+    const report = await monthlyReport(id, month);
+    if (!report) return res.status(404).json({ error: 'Employee not found' });
+    res.json(report);
   } catch (e) {
     res.status(500).json({ error: e.message || String(e) });
   }
