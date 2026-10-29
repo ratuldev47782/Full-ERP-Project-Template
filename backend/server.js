@@ -11,7 +11,7 @@ const mongoose = require('mongoose');
 const cron = require('node-cron');
 const Attendance = require('./models/Attendance');
 const Employee = require('./models/Employee');
-const { getInfo, syncDevice } = require('./zk');
+const { getInfo, syncDevice, prepareClear, confirmClear } = require('./zk');
 const { dailyReport, monthlyReport } = require('./daily');
 
 const app = express();
@@ -55,18 +55,47 @@ app.get('/api/status', auth, async (req, res) => {
   }
 });
 
-// one sync at a time (shared by cron and manual button)
-let syncing = false;
+// Ek shomoy ekta-i sync cholbe. Sync cholar shomoy keu abar sync chaile
+// error na diye SEI cholte thaka sync-er result-er jonno wait korbe
+// (cron ar manual/auto button duto-i ek-i promise share kore).
+let syncPromise = null;
+function runSync() {
+  if (!syncPromise) {
+    syncPromise = syncDevice().finally(() => {
+      syncPromise = null;
+    });
+  }
+  return syncPromise;
+}
 
 app.post('/api/sync', auth, async (req, res) => {
-  if (syncing) return res.status(409).json({ error: 'Sync already running, try again shortly' });
-  syncing = true;
   try {
-    res.json(await syncDevice());
+    res.json(await runSync());
   } catch (e) {
     res.status(500).json({ error: e.message || String(e) });
-  } finally {
-    syncing = false;
+  }
+});
+
+// ---- Device log clear (manual, 2 step) ----
+// Step 1: DB-te nai ase jegulo segulo upload + verify (device theke kichu delete hoy na)
+app.post('/api/clear-device/prepare', auth, async (req, res) => {
+  try {
+    res.json(await prepareClear());
+  } catch (e) {
+    res.status(500).json({ error: e.message || String(e) });
+  }
+});
+
+// Step 2: user confirm korle abar verify kore delete
+app.post('/api/clear-device/confirm', auth, async (req, res) => {
+  const expected = Number(req.body?.expectedLogs);
+  if (req.body?.confirm !== 'CLEAR' || !Number.isInteger(expected)) {
+    return res.status(400).json({ error: 'Confirmation missing' });
+  }
+  try {
+    res.json(await confirmClear(expected));
+  } catch (e) {
+    res.status(500).json({ error: e.message || String(e) });
   }
 });
 
@@ -159,14 +188,11 @@ app.delete('/api/employees/:id', auth, async (req, res) => {
 // ---- Auto sync ----
 const mins = Number(process.env.SYNC_MINUTES || 5);
 cron.schedule(`*/${mins} * * * *`, async () => {
-  if (syncing) return; // previous sync still running, skip this tick
-  syncing = true;
+  if (syncPromise) return; // previous sync still running, skip this tick
   try {
-    console.log('Auto sync:', await syncDevice());
+    console.log('Auto sync:', await runSync());
   } catch (e) {
     console.log('Auto sync failed:', e.message || e);
-  } finally {
-    syncing = false;
   }
 });
 
