@@ -117,8 +117,10 @@ export default function Dashboard() {
         body: JSON.stringify({ confirm: 'CLEAR', expectedLogs: p.logs }),
       });
       setMsg({
-        text: r.cleared ? `Device clear hoyeche. ${r.logs} ta log DB-te safe ache.` : 'Kichu clear hoyni.',
-      });
+  text: r.cleared
+    ? `Device theke ${r.logs} ta log muchhe fela hoyeche. Ei ${r.logs} ta log DB-te safe ache.`
+    : 'Kichu clear hoyni.',
+});
     } catch (e) {
       setMsg({ err: true, text: e.message });
     } finally {
