@@ -1,7 +1,8 @@
-// backend/zk.js
+// backend/controllers/deviceController.js
+// Device communication (ZKLib), status, auto sync and device log clear.
 
 const ZKLib = require('node-zklib');
-const Attendance = require('./models/Attendance');
+const { Attendance } = require('../models/model');
 
 const errMsg = (e) => (e && (e.message || (e.err && e.err.message))) || String(e);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -172,4 +173,100 @@ async function confirmClear(expectedLogs) {
   }, 1); // retry nai, clear command duibar jabe na
 }
 
-module.exports = { getInfo, syncDevice, prepareClear, confirmClear };
+// ---------- Status cache ----------
+// Status 30 second cache kora thake, jate dashboard reload-e bar bar device-e connect na kore.
+// Ekshathe onek request ashleo ekta-i device check cholbe.
+const STATUS_TTL = 30000;
+let statusCache = { at: 0, data: null };
+let statusPromise = null;
+
+function checkDeviceStatus() {
+  if (statusCache.data && Date.now() - statusCache.at < STATUS_TTL) {
+    return Promise.resolve(statusCache.data);
+  }
+  if (!statusPromise) {
+    const base = { ip: process.env.ZK_IP, port: process.env.ZK_PORT };
+    statusPromise = getInfo()
+      .then((info) => ({ connected: true, ...base, info }))
+      .catch((e) => ({ connected: false, ...base, error: e.message || String(e) }))
+      .then((data) => {
+        statusCache = { at: Date.now(), data };
+        return data;
+      })
+      .finally(() => {
+        statusPromise = null;
+      });
+  }
+  return statusPromise;
+}
+
+// Ek shomoy ekta-i sync cholbe. Sync cholar shomoy keu abar sync chaile
+// error na diye SEI cholte thaka sync-er result-er jonno wait korbe
+// (cron ar manual/auto button duto-i ek-i promise share kore).
+let syncPromise = null;
+function runSync() {
+  if (!syncPromise) {
+    syncPromise = syncDevice()
+      .then((r) => {
+        // sync sofol mane device connected, status cache fresh kore dao
+        statusCache = {
+          at: Date.now(),
+          data: { connected: true, ip: process.env.ZK_IP, port: process.env.ZK_PORT },
+        };
+        return r;
+      })
+      .finally(() => {
+        syncPromise = null;
+      });
+  }
+  return syncPromise;
+}
+
+const isSyncing = () => Boolean(syncPromise);
+
+// ---------- Route handlers ----------
+async function status(req, res) {
+  res.json(await checkDeviceStatus());
+}
+
+async function sync(req, res) {
+  try {
+    res.json(await runSync());
+  } catch (e) {
+    res.status(500).json({ error: e.message || String(e) });
+  }
+}
+
+async function prepareClearHandler(req, res) {
+  try {
+    res.json(await prepareClear());
+  } catch (e) {
+    res.status(500).json({ error: e.message || String(e) });
+  }
+}
+
+async function confirmClearHandler(req, res) {
+  const expected = Number(req.body?.expectedLogs);
+  if (req.body?.confirm !== 'CLEAR' || !Number.isInteger(expected)) {
+    return res.status(400).json({ error: 'Confirmation missing' });
+  }
+  try {
+    res.json(await confirmClear(expected));
+  } catch (e) {
+    res.status(500).json({ error: e.message || String(e) });
+  }
+}
+
+module.exports = {
+  getInfo,
+  syncDevice,
+  prepareClear,
+  confirmClear,
+  checkDeviceStatus,
+  runSync,
+  isSyncing,
+  status,
+  sync,
+  prepareClearHandler,
+  confirmClearHandler,
+};
