@@ -1,5 +1,6 @@
 // backend/server.js
 
+process.env.TZ = 'Asia/Dhaka'; // dotenv-er age; device punch time Bangladesh time-e thik thakbe
 require('dotenv').config();
 process.on('uncaughtException', (e) => console.log('Guarded error:', e.message));
 process.on('unhandledRejection', (e) => console.log('Guarded rejection:', (e && e.message) || e));
@@ -13,6 +14,7 @@ const Attendance = require('./models/Attendance');
 const Employee = require('./models/Employee');
 const { getInfo, syncDevice, prepareClear, confirmClear } = require('./zk');
 const { dailyReport, monthlyReport } = require('./daily');
+const { dayStart, dayEnd, dhakaDate } = require('./calc');
 
 const app = express();
 app.use(cors());
@@ -134,7 +136,7 @@ app.get('/api/logs', auth, async (req, res) => {
   try {
     const { date, userId } = req.query;
     const q = {};
-    if (date) q.timestamp = { $gte: new Date(`${date}T00:00:00`), $lte: new Date(`${date}T23:59:59.999`) };
+    if (date) q.timestamp = { $gte: dayStart(date), $lte: dayEnd(date) };
     if (userId) q.userId = userId;
     const logs = await Attendance.find(q).sort({ timestamp: -1 }).limit(500).lean();
     const names = Object.fromEntries((await Employee.find().lean()).map((e) => [e.proximityId, e.name]));
@@ -146,7 +148,7 @@ app.get('/api/logs', auth, async (req, res) => {
 
 app.get('/api/daily', auth, async (req, res) => {
   try {
-    const date = req.query.date || new Date().toLocaleDateString('en-CA');
+    const date = req.query.date || dhakaDate(new Date());
     res.json(await dailyReport(date));
   } catch (e) {
     res.status(500).json({ error: e.message || String(e) });
@@ -214,6 +216,9 @@ app.delete('/api/employees/:id', auth, async (req, res) => {
     res.status(500).json({ error: e.message || String(e) });
   }
 });
+
+// ---- Settings, Holidays, Leaves, Employee search, Monthly PDF ----
+app.use('/api', require('./adminRoutes')(auth));
 
 // ---- Auto sync ----
 const mins = Math.max(1, Number(process.env.SYNC_MINUTES || 5));

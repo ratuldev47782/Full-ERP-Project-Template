@@ -17,6 +17,10 @@ const statusColor = {
   Present: 'text-green-600',
   Absent: 'text-red-600',
   'Missing Out': 'text-amber-600',
+  Holiday: 'text-purple-600',
+  CL: 'text-sky-600',
+  SL: 'text-sky-600',
+  EL: 'text-sky-600',
   Weekend: 'text-slate-400',
   'Not Joined': 'text-slate-400',
 };

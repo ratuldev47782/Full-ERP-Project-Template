@@ -17,12 +17,17 @@ import {
   RefreshCw,
   CheckCircle2,
   AlertCircle,
+  Settings, CalendarDays, CalendarCheck, FileText
 } from 'lucide-react';
 import { runSync, fmtSyncTime, LAST_SYNC_KEY, SYNC_EVENT } from '../../lib/sync';
 
 const menu = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/employees', label: 'Employees', icon: Users },
+  { href: '/reports', label: 'Attendance Report', icon: FileText },
+  { href: '/leaves', label: 'Leave Management', icon: CalendarCheck },
+  { href: '/holidays', label: 'Holidays', icon: CalendarDays },
+  { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
 /* ---------- Sidebar parts ---------- */
