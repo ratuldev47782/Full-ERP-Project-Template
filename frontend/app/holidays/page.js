@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Plus, Pencil, Trash2, CheckCircle2, AlertCircle, Menu, LogOut, RefreshCw } from 'lucide-react';
 import SideNavBar from '../components/SideNavBar';
+import DeviceStatus from '../components/DeviceStatus';
 
 const API = process.env.NEXT_PUBLIC_API || 'http://localhost:5000';
 
@@ -219,6 +220,7 @@ export default function HolidaysPage() {
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
+            <DeviceStatus />
             <div className="hidden text-right leading-tight sm:block">
               <div className="text-[10px] uppercase tracking-wide text-slate-400">Last synced</div>
               <div className="text-xs font-medium text-slate-600">{fmtSyncTime(lastSync) || 'Not yet'}</div>

@@ -4,8 +4,23 @@
 
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { CheckCircle2, AlertCircle, Menu, LogOut, RefreshCw } from 'lucide-react';
+import {
+  CheckCircle2,
+  AlertCircle,
+  Menu,
+  LogOut,
+  RefreshCw,
+  Clock,
+  Utensils,
+  CalendarOff,
+  Building2,
+  Save,
+  Hourglass,
+  Briefcase,
+  Info,
+} from 'lucide-react';
 import SideNavBar from '../components/SideNavBar';
+import DeviceStatus from '../components/DeviceStatus';
 
 const API = process.env.NEXT_PUBLIC_API || 'http://localhost:5000';
 
@@ -53,13 +68,84 @@ const fmtSyncTime = (iso) =>
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const input =
-  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100';
+  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100';
 
 const toMin = (t) => {
   const [h, m] = String(t || '0:0').split(':').map(Number);
-  return h * 60 + m;
+  return (h || 0) * 60 + (m || 0);
 };
-const hours = (m) => `${Number((m / 60).toFixed(2))} Hours`;
+const hours = (m) => `${Number((Math.max(m, 0) / 60).toFixed(2))} h`;
+const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+
+/* ---------- small UI parts ---------- */
+
+function Section({ icon: Icon, title, desc, tone = 'blue', children }) {
+  const tones = {
+    blue: 'bg-blue-50 text-blue-600',
+    amber: 'bg-amber-50 text-amber-600',
+    purple: 'bg-purple-50 text-purple-600',
+    emerald: 'bg-emerald-50 text-emerald-600',
+  };
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-start gap-3 border-b border-slate-100 px-5 py-4">
+        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tones[tone]}`}>
+          <Icon className="h-5 w-5" />
+        </span>
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
+          <p className="text-xs text-slate-500">{desc}</p>
+        </div>
+      </div>
+      <div className="p-5">{children}</div>
+    </section>
+  );
+}
+
+function Stat({ icon: Icon, label, value, tone }) {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+      <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${tone}`}>
+        <Icon className="h-5 w-5" />
+      </span>
+      <div className="min-w-0">
+        <div className="text-[10px] font-medium uppercase tracking-wide text-slate-400">{label}</div>
+        <div className="truncate text-lg font-bold text-slate-800">{value}</div>
+      </div>
+    </div>
+  );
+}
+
+function DayTimeline({ start, end, lunchStart, lunchEnd }) {
+  const os = toMin(start);
+  const oe = toMin(end);
+  const total = oe - os;
+  if (total <= 0) return null;
+  const ls = clamp(((toMin(lunchStart) - os) / total) * 100, 0, 100);
+  const le = clamp(((toMin(lunchEnd) - os) / total) * 100, 0, 100);
+  const lunchOk = le > ls;
+
+  return (
+    <div>
+      <div className="relative h-8 overflow-hidden rounded-lg bg-blue-500/90">
+        {lunchOk && (
+          <div
+            className="absolute inset-y-0 flex items-center justify-center bg-amber-300 text-[10px] font-semibold text-amber-900"
+            style={{ left: `${ls}%`, width: `${le - ls}%` }}
+          >
+            Lunch
+          </div>
+        )}
+        <span className="absolute inset-y-0 left-2 flex items-center text-[11px] font-semibold text-white">Work</span>
+        <span className="absolute inset-y-0 right-2 flex items-center text-[11px] font-semibold text-white">Work</span>
+      </div>
+      <div className="mt-1.5 flex justify-between text-[11px] font-medium text-slate-500">
+        <span>{start}</span>
+        <span>{end}</span>
+      </div>
+    </div>
+  );
+}
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -139,6 +225,7 @@ export default function SettingsPage() {
     try {
       setF(await api('/api/settings', { method: 'PUT', body: JSON.stringify(f) }));
       setMsg({ type: 'ok', text: 'Settings saved. All attendance and OT calculations now use these values.' });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
       setMsg({ type: 'err', text: err.message });
     } finally {
@@ -151,7 +238,7 @@ export default function SettingsPage() {
 
   const time = (k, label) => (
     <div>
-      <label className="mb-1 block text-xs font-medium text-slate-600">{label}</label>
+      <label className="mb-1.5 block text-xs font-medium text-slate-600">{label}</label>
       <input type="time" required value={f[k]} onChange={(e) => set(k, e.target.value)} className={input} />
     </div>
   );
@@ -190,6 +277,7 @@ export default function SettingsPage() {
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
+            <DeviceStatus />
             <div className="hidden text-right leading-tight sm:block">
               <div className="text-[10px] uppercase tracking-wide text-slate-400">Last synced</div>
               <div className="text-xs font-medium text-slate-600">{fmtSyncTime(lastSync) || 'Not yet'}</div>
@@ -215,86 +303,159 @@ export default function SettingsPage() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto p-4 md:p-6">
-          <div className="mb-4">
-            <h2 className="text-lg font-semibold text-slate-800">Working Hour Settings</h2>
-            <p className="text-xs text-slate-500">Office hours, lunch, weekend and company details used for attendance, OT and PDF.</p>
-          </div>
-
-          {msg && (
-            <div
-              className={`mb-4 flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm ${
-                msg.type === 'ok' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'
-              }`}
-            >
-              {msg.type === 'ok' ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertCircle className="h-4 w-4 shrink-0" />}
-              {msg.text}
+        <main className="flex-1 overflow-auto">
+          <div className="mx-auto max-w-5xl p-4 md:p-6">
+            <div className="mb-5">
+              <h2 className="text-xl font-bold text-slate-800">Working Hour Settings</h2>
+              <p className="mt-0.5 text-sm text-slate-500">
+                Office hours, lunch, weekend and company details used for attendance, OT and PDF.
+              </p>
             </div>
-          )}
 
-          {!f ? (
-            <div className="text-sm text-slate-500">Loading...</div>
-          ) : (
-            <form onSubmit={save} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-              <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4">
-                {time('officeStart', 'Office Start Time')}
-                {time('officeEnd', 'Office End Time')}
-                {time('lunchStart', 'Lunch Start Time')}
-                {time('lunchEnd', 'Lunch End Time')}
+            {msg && (
+              <div
+                className={`mb-5 flex items-center gap-2 rounded-xl border px-4 py-3 text-sm ${
+                  msg.type === 'ok'
+                    ? 'border-green-200 bg-green-50 text-green-700'
+                    : 'border-red-200 bg-red-50 text-red-700'
+                }`}
+              >
+                {msg.type === 'ok' ? (
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                ) : (
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                )}
+                {msg.text}
               </div>
+            )}
 
-              <div className="grid grid-cols-1 gap-3 border-t border-slate-100 px-5 py-4 sm:grid-cols-3">
-                {[
-                  ['Total Office Duration', hours(total)],
-                  ['Lunch Duration', hours(lunch)],
-                  ['Actual Working Hours', hours(total - lunch)],
-                ].map(([a, b]) => (
-                  <div key={a} className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5">
-                    <div className="text-[10px] font-medium uppercase tracking-wide text-slate-400">{a}</div>
-                    <div className="text-sm font-semibold text-slate-800">{b}</div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="border-t border-slate-100 px-5 py-4">
-                <div className="mb-2 text-xs font-medium text-slate-600">Weekend days</div>
-                <div className="flex flex-wrap gap-2">
-                  {WEEKDAYS.map((d, i) => (
-                    <label
-                      key={d}
-                      className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-sm ${
-                        f.weekendDays.includes(i) ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-300 text-slate-600'
-                      }`}
-                    >
-                      <input type="checkbox" checked={f.weekendDays.includes(i)} onChange={() => toggleDay(i)} />
-                      {d}
-                    </label>
+            {!f ? (
+              !msg && (
+                <div className="space-y-4">
+                  {[0, 1, 2].map((i) => (
+                    <div key={i} className="h-32 animate-pulse rounded-2xl border border-slate-200 bg-white" />
                   ))}
                 </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 border-t border-slate-100 p-5 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-600">Company Name (PDF header)</label>
-                  <input value={f.companyName} onChange={(e) => set('companyName', e.target.value)} className={input} />
+              )
+            ) : (
+              <form onSubmit={save} className="space-y-5">
+                {/* Summary stats */}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <Stat icon={Briefcase} label="Total Office Duration" value={hours(total)} tone="bg-blue-50 text-blue-600" />
+                  <Stat icon={Utensils} label="Lunch Duration" value={hours(lunch)} tone="bg-amber-50 text-amber-600" />
+                  <Stat
+                    icon={Hourglass}
+                    label="Actual Working Hours"
+                    value={hours(total - lunch)}
+                    tone="bg-emerald-50 text-emerald-600"
+                  />
                 </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-600">Company Address (PDF header)</label>
-                  <input value={f.companyAddress} onChange={(e) => set('companyAddress', e.target.value)} className={input} />
-                </div>
-              </div>
 
-              <div className="flex items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3">
-                <span className="text-xs text-slate-500">OT grace period: fixed 15 minutes (not editable).</span>
-                <button
-                  disabled={saving}
-                  className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:opacity-60"
+                {/* Office + lunch times */}
+                <Section
+                  icon={Clock}
+                  title="Office & Lunch Time"
+                  desc="Working hours and the lunch break that is deducted from them."
                 >
-                  {saving ? 'Saving...' : 'Save Settings'}
-                </button>
-              </div>
-            </form>
-          )}
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    {time('officeStart', 'Office Start Time')}
+                    {time('officeEnd', 'Office End Time')}
+                    {time('lunchStart', 'Lunch Start Time')}
+                    {time('lunchEnd', 'Lunch End Time')}
+                  </div>
+
+                  <div className="mt-5 rounded-xl border border-slate-100 bg-slate-50 p-4">
+                    <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                      Day preview
+                    </div>
+                    <DayTimeline
+                      start={f.officeStart}
+                      end={f.officeEnd}
+                      lunchStart={f.lunchStart}
+                      lunchEnd={f.lunchEnd}
+                    />
+                  </div>
+                </Section>
+
+                {/* Weekend */}
+                <Section
+                  icon={CalendarOff}
+                  title="Weekend Days"
+                  desc="Selected days are treated as weekly holidays in reports."
+                  tone="purple"
+                >
+                  <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
+                    {WEEKDAYS.map((d, i) => {
+                      const on = f.weekendDays.includes(i);
+                      return (
+                        <label
+                          key={d}
+                          className={`flex cursor-pointer select-none flex-col items-center gap-1 rounded-xl border px-2 py-3 text-sm font-semibold transition ${
+                            on
+                              ? 'border-purple-300 bg-purple-50 text-purple-700 shadow-sm'
+                              : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="sr-only"
+                            checked={on}
+                            onChange={() => toggleDay(i)}
+                          />
+                          {d}
+                          <span className="text-[10px] font-medium">{on ? 'Off' : 'Work'}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </Section>
+
+                {/* Company */}
+                <Section
+                  icon={Building2}
+                  title="Company Details"
+                  desc="Shown in the header of the monthly PDF time card."
+                  tone="emerald"
+                >
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600">Company Name</label>
+                      <input
+                        value={f.companyName}
+                        onChange={(e) => set('companyName', e.target.value)}
+                        className={input}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600">Company Address</label>
+                      <input
+                        value={f.companyAddress}
+                        onChange={(e) => set('companyAddress', e.target.value)}
+                        className={input}
+                      />
+                    </div>
+                  </div>
+                </Section>
+
+                {/* Sticky save bar */}
+                <div className="sticky bottom-0 -mx-4 border-t border-slate-200 bg-white/90 px-4 py-3 backdrop-blur md:-mx-6 md:px-6">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="flex items-center gap-1.5 text-xs text-slate-500">
+                      <Info className="h-4 w-4 shrink-0 text-slate-400" />
+                      OT grace period is fixed at 15 minutes (not editable).
+                    </span>
+                    <button
+                      disabled={saving}
+                      className="flex shrink-0 items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60"
+                    >
+                      <Save className="h-4 w-4" />
+                      {saving ? 'Saving...' : 'Save Settings'}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            )}
+          </div>
         </main>
       </div>
 
@@ -305,7 +466,11 @@ export default function SettingsPage() {
             toast.err ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700'
           }`}
         >
-          {toast.err ? <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> : <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />}
+          {toast.err ? (
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          ) : (
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+          )}
           <span>{toast.text}</span>
         </div>
       )}

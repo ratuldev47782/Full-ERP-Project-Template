@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { RefreshCw, Trash2, Menu, LogOut, CheckCircle2, AlertCircle } from 'lucide-react';
 import SideNavBar from '../components/SideNavBar';
+import DeviceStatus from '../components/DeviceStatus';
 
 const API = process.env.NEXT_PUBLIC_API || 'http://localhost:5000';
 
@@ -264,6 +265,7 @@ export default function Dashboard() {
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
+            <DeviceStatus />
             {/* Last synced time */}
             <div className="hidden text-right leading-tight sm:block">
               <div className="text-[10px] uppercase tracking-wide text-slate-400">Last synced</div>
