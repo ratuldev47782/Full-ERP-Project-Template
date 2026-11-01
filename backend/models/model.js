@@ -82,6 +82,7 @@ const settingSchema = new mongoose.Schema(
     lunchStart: { type: String, default: '12:00' },
     lunchEnd: { type: String, default: '13:00' },
     weekendDays: { type: [Number], default: envWeekend }, // 0=Sun ... 6=Sat
+    otRoundMin: { type: Number, default: 15, min: 0, max: 59 }, // full ghontar koto min age porjonto round-up hobe
     companyName: { type: String, default: 'HKD Outdoor Innovations Ltd.' },
     companyAddress: { type: String, default: 'Plot # 45-50, Sector#2, KEPZ, Chittagong.' },
   },

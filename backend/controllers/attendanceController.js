@@ -12,7 +12,7 @@ const { Attendance, Employee, Holiday, Leave, Setting } = require('../models/mod
 
 const TZ_OFFSET_MS = 6 * 3600000;
 const MIN = 60000;
-const OT_GRACE_MIN = 15; // fixed
+const OT_ROUND_MIN = 15; // default; Settings theke change kora jay (Setting.otRoundMin)
 
 const pad = (n) => String(n).padStart(2, '0');
 const shifted = (d) => new Date(new Date(d).getTime() + TZ_OFFSET_MS);
@@ -48,9 +48,22 @@ function monthInfo(month) {
 
 const overlap = (aS, aE, bS, bE) => Math.max(0, Math.min(aE, bE) - Math.max(aS, bS));
 
-// OT rounding (15 min grace, protiti ghontay):
-//   0:00-0:15 -> 0h | 0:16-1:15 -> 1h | 1:16-2:15 -> 2h | 2:16-3:15 -> 3h ...
-const roundOtMinutes = (actualMin) => Math.max(0, Math.ceil((actualMin - OT_GRACE_MIN) / 60)) * 60;
+// OT rounding (round = Setting.otRoundMin, default 15 min):
+//   puri ghonta always count hoy; baki minute gulo tokhon-i porer ghontay uthbe
+//   jokhon segulo porer ghontar theke round-min ba tar beshi (pachay) hoy.
+//   round 15 hole: 1:45 -> 2h, kintu 1:44 -> 1h | 0:45 -> 1h, 0:44 -> 0h
+const otRound = (s) => {
+  const r = Number(s && s.otRoundMin);
+  return Number.isInteger(r) && r >= 0 && r <= 59 ? r : OT_ROUND_MIN;
+};
+
+const roundOtMinutes = (actualMin, roundMin = OT_ROUND_MIN) => {
+  const total = Math.max(0, Math.floor(Number(actualMin) || 0));
+  const full = Math.floor(total / 60);
+  const rest = total % 60;
+  const bumped = rest > 0 && rest >= 60 - roundMin;
+  return (bumped ? full + 1 : full) * 60;
+};
 
 // Normal working day (holiday-te present thakleo ekhoni hisab hoy).
 //   effective in = MAX(actual in, office start)
@@ -80,7 +93,7 @@ function computeWork(date, inTime, outTime, s) {
     workedMinutes,
     regularMinutes,
     otActualMinutes,
-    otFinalMinutes: roundOtMinutes(otActualMinutes),
+    otFinalMinutes: roundOtMinutes(otActualMinutes, otRound(s)),
   };
 }
 
@@ -485,8 +498,8 @@ async function monthlyPdf(req, res) {
 
 module.exports = {
   // calc
-  OT_GRACE_MIN, pad, dhakaDate, dhakaTime, dayStart, dayEnd, dayOfWeek, isValidDate,
-  hhmmToMin, fmtHM, monthInfo, roundOtMinutes, computeWork, settingsInfo,
+  OT_ROUND_MIN, pad, dhakaDate, dhakaTime, dayStart, dayEnd, dayOfWeek, isValidDate,
+  hhmmToMin, fmtHM, monthInfo, roundOtMinutes, otRound, computeWork, settingsInfo,
   // reports
   dailyReport, monthlyReport, buildDay, summarize, buildPdf,
   // handlers

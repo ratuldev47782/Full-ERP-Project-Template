@@ -247,6 +247,8 @@ export default function SettingsPage() {
 
   const total = f ? toMin(f.officeEnd) - toMin(f.officeStart) : 0;
   const lunch = f ? toMin(f.lunchEnd) - toMin(f.lunchStart) : 0;
+  const round = f ? clamp(Number(f.otRoundMin ?? 15) || 0, 0, 59) : 15;
+  const hhmm = (m) => `${Math.floor(m / 60)}:${pad(m % 60)}`;
 
   const time = (k, label) => (
     <label className="block">
@@ -384,6 +386,42 @@ export default function SettingsPage() {
                     </p>
                   </Row>
 
+                  <Row
+                    title="Overtime"
+                    desc="Overtime is paid in full hours. Leftover minutes are rounded up to the next hour only when they are within this threshold of it."
+                  >
+                    <label className="block max-w-xs">
+                      <span className="mb-1 block text-sm text-zinc-700">Rounding threshold</span>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          required
+                          min="0"
+                          max="59"
+                          step="1"
+                          value={f.otRoundMin ?? 15}
+                          onChange={(e) =>
+                            set('otRoundMin', e.target.value === '' ? '' : Number(e.target.value))
+                          }
+                          className={`${input} pr-12`}
+                        />
+                        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-zinc-500">
+                          min
+                        </span>
+                      </div>
+                    </label>
+                    <div className="mt-3 max-w-md text-xs text-zinc-500">
+                      <p>
+                        Leftover overtime rounds up to the next full hour when it is at least{' '}
+                        <span className="font-medium text-zinc-700 tabular-nums">{60 - round} min</span>{' '}
+                        past the hour{round === 0 ? ' (exact hours only)' : ''}.
+                      </p>
+                      <p className="mt-1 tabular-nums">
+                        Example: {hhmm(120 - round)} counts as 2 hours, {hhmm(119 - round)} stays 1 hour.
+                      </p>
+                    </div>
+                  </Row>
+
                   <Row title="Company" desc="Printed at the top of each monthly PDF time card.">
                     <div className="grid gap-4 sm:grid-cols-2">
                       <label className="block">
@@ -407,7 +445,9 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="sticky bottom-0 -mx-4 mt-6 flex items-center justify-between gap-3 border-t border-zinc-300 bg-zinc-100/95 px-4 py-3 backdrop-blur md:-mx-8 md:px-8">
-                  <span className="text-sm text-zinc-500">OT grace period is fixed at 15 minutes.</span>
+                  <span className="text-sm text-zinc-500 tabular-nums">
+                    OT rounding threshold: {round} minutes.
+                  </span>
                   <button
                     disabled={saving}
                     className="shrink-0 rounded-md bg-teal-800 px-5 py-2 text-sm font-semibold text-white hover:bg-teal-900 focus:outline-none focus:ring-2 focus:ring-teal-700 focus:ring-offset-2 focus:ring-offset-zinc-100 disabled:opacity-60"

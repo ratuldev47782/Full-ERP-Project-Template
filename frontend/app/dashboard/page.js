@@ -202,42 +202,62 @@ function Panel({ title, note, children }) {
   );
 }
 
-// Department-wise: kotojon present / hisab-er moddhe
+// Department-wise: registered shob department dekhay (data na thakleo). Kotojon attend korlo / hisab-er moddhe
 function DeptBars({ rows }) {
   const map = new Map();
   for (const r of rows) {
-    const counted = r.status === 'Present' || r.status === 'Missing Out' || r.status === 'Absent' || LEAVES.has(r.status);
-    if (!counted) continue;
     const k = (r.department || '').trim() || 'Unassigned';
-    const g = map.get(k) || { name: k, counted: 0, attended: 0 };
-    g.counted++;
-    if (r.status === 'Present' || r.status === 'Missing Out') g.attended++;
+    const g = map.get(k) || { name: k, registered: 0, counted: 0, attended: 0 };
+    g.registered++;
+    const counted = r.status === 'Present' || r.status === 'Missing Out' || r.status === 'Absent' || LEAVES.has(r.status);
+    if (counted) {
+      g.counted++;
+      if (r.status === 'Present' || r.status === 'Missing Out') g.attended++;
+    }
     map.set(k, g);
   }
-  const list = [...map.values()].sort((a, b) => b.counted - a.counted).slice(0, 8);
+  // A-Z, Unassigned shobar shesh-e
+  const list = [...map.values()].sort((a, b) => {
+    if (a.name === 'Unassigned') return 1;
+    if (b.name === 'Unassigned') return -1;
+    return a.name.localeCompare(b.name);
+  });
   const max = Math.max(1, ...list.map((g) => g.counted));
 
   if (!list.length) {
-    return <p className="py-10 text-center text-sm text-zinc-500">No working-day data for this date (holiday, weekend or no records).</p>;
+    return <p className="py-10 text-center text-sm text-zinc-500">No registered employees yet.</p>;
   }
 
   return (
-    <ul className="space-y-2.5">
+    <ul className="max-h-[26rem] space-y-2.5 overflow-y-auto pr-1">
       {list.map((g) => (
         <li key={g.name}>
           <div className="mb-1 flex items-baseline justify-between gap-3 text-sm">
-            <span className="truncate text-zinc-800">{g.name}</span>
+            <span className="truncate text-zinc-800">
+              {g.name}
+              <span className="ml-2 text-xs text-zinc-500 tabular-nums">{g.registered} registered</span>
+            </span>
             <span className="shrink-0 text-zinc-500 tabular-nums">
-              <span className="font-medium text-zinc-900">{g.attended}</span> / {g.counted}
+              {g.counted ? (
+                <>
+                  <span className="font-medium text-zinc-900">{g.attended}</span> / {g.counted}
+                </>
+              ) : (
+                'No record'
+              )}
             </span>
           </div>
           <div
             className="h-3 bg-zinc-100"
-            style={{ width: `${(g.counted / max) * 100}%` }}
+            style={{ width: g.counted ? `${(g.counted / max) * 100}%` : '100%' }}
             role="img"
-            aria-label={`${g.name}: ${g.attended} of ${g.counted} attended`}
+            aria-label={
+              g.counted
+                ? `${g.name}: ${g.attended} of ${g.counted} attended`
+                : `${g.name}: no working-day record for this date`
+            }
           >
-            <div className="h-full bg-teal-800" style={{ width: `${(g.attended / g.counted) * 100}%` }} />
+            {g.counted > 0 && <div className="h-full bg-teal-800" style={{ width: `${(g.attended / g.counted) * 100}%` }} />}
           </div>
         </li>
       ))}
@@ -612,7 +632,7 @@ export default function Dashboard() {
                 )}
               </Panel>
 
-              <Panel title="Department attendance" note={`Attended out of counted employees on ${fmtDate(date)}. Top 8 departments.`}>
+              <Panel title="Department attendance" note={`Attended out of counted employees on ${fmtDate(date)}. All registered departments.`}>
                 <DeptBars rows={rows} />
               </Panel>
             </div>

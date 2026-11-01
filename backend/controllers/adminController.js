@@ -44,6 +44,14 @@ async function updateSettings(req, res) {
     if (wd.some((n) => !Number.isInteger(n) || n < 0 || n > 6)) throw new Error('Weekend days are invalid');
     data.weekendDays = wd.sort();
 
+    if (b.otRoundMin !== undefined) {
+      const r = Number(b.otRoundMin);
+      if (!Number.isInteger(r) || r < 0 || r > 59) {
+        throw new Error('OT rounding threshold must be a whole number of minutes between 0 and 59');
+      }
+      data.otRoundMin = r;
+    }
+
     if (typeof b.companyName === 'string' && b.companyName.trim()) data.companyName = b.companyName.trim();
     if (typeof b.companyAddress === 'string') data.companyAddress = b.companyAddress.trim();
 
