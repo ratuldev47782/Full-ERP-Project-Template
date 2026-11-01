@@ -2,8 +2,8 @@
 
 'use client';
 
-import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 
 const API = process.env.NEXT_PUBLIC_API || 'http://localhost:5000';
 
@@ -32,6 +32,9 @@ async function api(path, options = {}) {
   return data;
 }
 
+const input =
+  'w-full rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500';
+
 export default function LoginPage() {
   const router = useRouter();
   const [username, setUsername] = useState('');
@@ -57,39 +60,56 @@ export default function LoginPage() {
     }
   };
 
-  const input =
-    'w-full rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
-
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-100">
-      <form onSubmit={submit} className="w-full max-w-sm rounded border border-slate-200 bg-white shadow">
-        <div className="rounded-t bg-slate-900 px-6 py-4 text-center text-sm font-bold tracking-wide text-white">
-          ATTENDANCE ERP
+    <div className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
+      <div className="grid w-full max-w-4xl overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg md:grid-cols-2">
+        {/* Illustration */}
+        <div className="hidden flex-col items-center justify-center bg-amber-50 p-6 md:flex">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/mobile-login-animate.svg" alt="Person logging in on a mobile device" className="w-full max-w-sm" />
         </div>
-        <div className="space-y-4 p-6">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Username</label>
-            <input required value={username} onChange={(e) => setUsername(e.target.value)} className={input} />
+
+        {/* Form */}
+        <form onSubmit={submit} className="flex flex-col justify-center">
+          {/* Brand header */}
+          <div className="flex items-center justify-center gap-3 border-b border-slate-200 bg-slate-50 px-6 py-4">
+            <img src="/HKD_LOGO.png" alt="HKD logo" className="h-12 w-12 shrink-0 object-contain" />
+            <span className="h-10 w-px bg-slate-300" />
+            <div className="flex flex-col items-start">
+              <h1 className="text-sm font-bold tracking-[0.18em] text-slate-800 sm:text-base">
+                HKD OUTDOOR INNOVATIONS LTD
+              </h1>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.35em] text-amber-600">
+                Attendance ERP
+              </span>
+            </div>
           </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Password</label>
-            <input
-              required
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className={input}
-            />
+
+          <div className="space-y-4 p-6 sm:p-8">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Username</label>
+              <input required value={username} onChange={(e) => setUsername(e.target.value)} className={input} />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Password</label>
+              <input
+                required
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className={input}
+              />
+            </div>
+            {error && <div className="rounded bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>}
+            <button
+              disabled={loading}
+              className="w-full rounded bg-amber-400 py-2 text-sm font-semibold text-slate-900 hover:bg-amber-500 disabled:opacity-60"
+            >
+              {loading ? 'Please wait...' : 'Login'}
+            </button>
           </div>
-          {error && <div className="rounded bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>}
-          <button
-            disabled={loading}
-            className="w-full rounded bg-blue-600 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
-          >
-            {loading ? 'Please wait...' : 'Login'}
-          </button>
-        </div>
-      </form>
+        </form>
+      </div>
     </div>
   );
 }
