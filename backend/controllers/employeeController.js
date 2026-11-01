@@ -1,7 +1,7 @@
 // backend/controllers/employeeController.js
 // Employee register / list / update / delete and employee search.
 
-const { Employee } = require('../models/model');
+const { Employee, AttendanceEdit } = require('../models/model');
 
 const dupMsg = (e) =>
   e.code === 11000
@@ -40,6 +40,7 @@ async function update(req, res) {
 async function remove(req, res) {
   try {
     await Employee.findByIdAndDelete(req.params.id);
+    await AttendanceEdit.deleteMany({ employee: req.params.id }); // oi employee-er manual edit-o muchhe jay
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: errText(e) });

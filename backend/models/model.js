@@ -64,6 +64,21 @@ const leaveSchema = new mongoose.Schema(
 leaveSchema.index({ employee: 1, date: 1 }, { unique: true }); // ek din-e ekta-i leave
 const Leave = mongoose.model('Leave', leaveSchema);
 
+// ---- AttendanceEdit (manual override; raw punch kokhono change hoy na) ----
+const attendanceEditSchema = new mongoose.Schema(
+  {
+    employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
+    date: { type: String, required: true }, // yyyy-mm-dd (Asia/Dhaka)
+    inTime: { type: String, default: '' }, // 'HH:MM' ba khali = device punch
+    outTime: { type: String, default: '' }, // 'HH:MM' ba khali = device punch
+    otMinutes: { type: Number, default: null, min: 0 }, // null = auto hisab
+    note: { type: String, trim: true, default: '' },
+  },
+  { timestamps: true }
+);
+attendanceEditSchema.index({ employee: 1, date: 1 }, { unique: true }); // ek din-e ekta-i edit
+const AttendanceEdit = mongoose.model('AttendanceEdit', attendanceEditSchema);
+
 // ---- Setting (Admin Settings, ekta-i document, key = 'main') ----
 // Purono .env-er WEEKEND_DAYS thakle shetai prothom default hobe (backward compatible)
 const envWeekend = () => {
@@ -102,4 +117,4 @@ settingSchema.statics.current = async function () {
 };
 const Setting = mongoose.model('Setting', settingSchema);
 
-module.exports = { Attendance, DeviceUser, Employee, Holiday, Leave, Setting };
+module.exports = { Attendance, DeviceUser, Employee, Holiday, Leave, Setting, AttendanceEdit };

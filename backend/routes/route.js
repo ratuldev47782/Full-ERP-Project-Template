@@ -62,5 +62,8 @@ module.exports = function routes(auth) {
   // ---- Monthly PDF ----
   r.get('/employees/:id/monthly-pdf', auth, attendance.monthlyPdf);
 
+  // ---- Manual attendance edit (In / Out / OT override) ----
+  r.put('/employees/:id/attendance-edit', auth, attendance.saveEdit);
+
   return r;
 };

@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const mongoose = require('mongoose');
 const PDFDocument = require('pdfkit');
-const { Attendance, Employee, Holiday, Leave, Setting } = require('../models/model');
+const { Attendance, AttendanceEdit, Employee, Holiday, Leave, Setting } = require('../models/model');
 
 /* ================= calc ================= */
 
@@ -105,19 +105,26 @@ const settingsInfo = (s) => {
 
 /* ================= daily + monthly attendance ================= */
 // Raw punch (Attendance) theke live hisab kora hoy,
-// tai settings/holiday/leave change korle report sathe sathe thik thake (stale data hoy na).
+// tai settings/holiday/leave/edit change korle report sathe sathe thik thake (stale data hoy na).
 
 const isoDate = (d) => (d ? new Date(d).toISOString().slice(0, 10) : null); // joinDate (date input) -> yyyy-mm-dd
 
+const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const atTime = (date, hhmm) => (HHMM_RE.test(String(hhmm || '')) ? new Date(`${date}T${hhmm}:00+06:00`) : null);
+
 // Ek din-er hisab: prothom punch = IN, shesh punch = OUT
+// Manual edit (AttendanceEdit) thakle oi din-er In/Out/OT override hoy; raw punch change hoy na.
+// Manual OT dile: OT = oi value, ar Hours = regular hours + manual OT (duto-i ek shathe adjust hoy).
 // Status priority: Not Joined (punch nai) > Holiday (punch na thakle) > Leave (CL/SL/EL) > Present / Missing Out > Weekend > Absent
 // Holiday-te punch thakle ta general duty: Present / Missing Out hishebe normal-e count hoy (alada Holiday OT nai).
 function buildDay(date, times, ctx) {
-  const { settings, holiday, leave, joinStr, todayStr } = ctx;
-  const inTime = times[0] || null;
-  const outTime = times.length > 1 ? times[times.length - 1] : null;
+  const { settings, holiday, leave, joinStr, todayStr, edit } = ctx;
+  const rawIn = times[0] || null;
+  const rawOut = times.length > 1 ? times[times.length - 1] : null;
+  const inTime = (edit && atTime(date, edit.inTime)) || rawIn;
+  const outTime = (edit && atTime(date, edit.outTime)) || rawOut;
   const isWeekend = settings.weekendDays.includes(dayOfWeek(date));
-  const hasPunch = times.length > 0;
+  const hasPunch = times.length > 0 || Boolean(inTime);
 
   let status = '';
   if (!hasPunch && joinStr && date < joinStr) status = 'Not Joined';
@@ -130,12 +137,27 @@ function buildDay(date, times, ctx) {
   const day = {
     date, inTime, outTime, effectiveIn: null, hours: null, punches: times.length, status, isWeekend,
     workedMinutes: 0, regularMinutes: 0, otActualMinutes: 0, otFinalMinutes: 0,
+    autoOtMinutes: 0, // auto hisab-er OT (manual override chhara)
     holidayName: holiday ? holiday.name : null,
     leaveType: leave ? leave.type : null, leaveNote: leave ? leave.note || '' : '',
+    edited: Boolean(edit),
+    manualOt: Boolean(edit && edit.otMinutes != null),
+    edit: edit
+      ? { inTime: edit.inTime || '', outTime: edit.outTime || '', otMinutes: edit.otMinutes ?? null, note: edit.note || '' }
+      : null,
+    rawIn,
+    rawOut,
   };
 
   if (status === 'Present') {
     Object.assign(day, computeWork(date, inTime, outTime, settings));
+    day.autoOtMinutes = day.otFinalMinutes;
+    if (day.manualOt) {
+      // Manual OT: OT ar Hours duto-i adjust
+      day.otActualMinutes = edit.otMinutes;
+      day.otFinalMinutes = edit.otMinutes;
+      day.workedMinutes = day.regularMinutes + edit.otMinutes;
+    }
     day.hours = Number((day.workedMinutes / 60).toFixed(2));
   }
   return day;
@@ -175,6 +197,8 @@ async function dailyReport(dateStr) {
   const holiday = await Holiday.findOne({ date: dateStr }).lean();
   const leaves = await Leave.find({ date: dateStr }).lean();
   const leaveBy = Object.fromEntries(leaves.map((l) => [String(l.employee), l]));
+  const edits = await AttendanceEdit.find({ date: dateStr }).lean();
+  const editBy = Object.fromEntries(edits.map((x) => [String(x.employee), x]));
 
   const employees = await Employee.find().sort({ employeeId: 1 }).lean();
   const ids = employees.map((e) => e.proximityId);
@@ -192,6 +216,7 @@ async function dailyReport(dateStr) {
   return employees.map((e) => {
     const day = buildDay(dateStr, byUser[e.proximityId] || [], {
       settings, holiday, leave: leaveBy[String(e._id)], joinStr: isoDate(e.joinDate), todayStr,
+      edit: editBy[String(e._id)],
     });
     return {
       _id: e._id,
@@ -211,6 +236,7 @@ async function dailyReport(dateStr) {
       otActualMinutes: day.otActualMinutes,
       otFinalMinutes: day.otFinalMinutes,
       holidayName: day.holidayName,
+      edited: day.edited,
     };
   });
 }
@@ -224,16 +250,18 @@ async function monthlyReport(empId, month) {
   const { days: n, start, end } = monthInfo(month);
   const range = { $gte: `${month}-01`, $lte: `${month}-${pad(n)}` };
 
-  const [logs, holidays, leaves] = await Promise.all([
+  const [logs, holidays, leaves, edits] = await Promise.all([
     Attendance.find({ userId: emp.proximityId, timestamp: { $gte: start, $lt: end } }).sort({ timestamp: 1 }).lean(),
     Holiday.find({ date: range }).lean(),
     Leave.find({ employee: emp._id, date: range }).lean(),
+    AttendanceEdit.find({ employee: emp._id, date: range }).lean(),
   ]);
 
   const byDay = {};
   for (const l of logs) (byDay[dhakaDate(l.timestamp)] ||= []).push(l.timestamp);
   const holidayBy = Object.fromEntries(holidays.map((h) => [h.date, h]));
   const leaveBy = Object.fromEntries(leaves.map((l) => [l.date, l]));
+  const editBy = Object.fromEntries(edits.map((x) => [x.date, x]));
 
   const todayStr = dhakaDate(new Date());
   const joinStr = isoDate(emp.joinDate);
@@ -242,7 +270,7 @@ async function monthlyReport(empId, month) {
     const date = `${month}-${pad(d)}`;
     days.push(
       buildDay(date, byDay[date] || [], {
-        settings, holiday: holidayBy[date], leave: leaveBy[date], joinStr, todayStr,
+        settings, holiday: holidayBy[date], leave: leaveBy[date], joinStr, todayStr, edit: editBy[date],
       })
     );
   }
@@ -496,6 +524,63 @@ async function monthlyPdf(req, res) {
   }
 }
 
+// PUT /employees/:id/attendance-edit  { date, inTime, outTime, otMinutes, note }
+// Shob khali pathale override muche jay (device data-te ferot).
+async function saveEdit(req, res) {
+  try {
+    const { id } = req.params;
+    if (!mongoose.isValidObjectId(id)) throw new Error('Invalid employee ID');
+    const b = req.body || {};
+
+    const date = String(b.date || '');
+    if (!isValidDate(date)) throw new Error('Date is invalid');
+    if (date > dhakaDate(new Date())) throw new Error('Future date cannot be edited');
+
+    const inT = String(b.inTime || '').trim();
+    const outT = String(b.outTime || '').trim();
+    if (inT && !HHMM_RE.test(inT)) throw new Error('In time is invalid (HH:MM)');
+    if (outT && !HHMM_RE.test(outT)) throw new Error('Out time is invalid (HH:MM)');
+
+    let ot = null;
+    if (b.otMinutes !== undefined && b.otMinutes !== null && b.otMinutes !== '') {
+      ot = Number(b.otMinutes);
+      if (!Number.isInteger(ot) || ot < 0 || ot > 1440) throw new Error('Overtime must be between 00:00 and 24:00');
+    }
+    const note = String(b.note || '').trim().slice(0, 200);
+
+    const emp = await Employee.findById(id).lean();
+    if (!emp) return res.status(404).json({ error: 'Employee not found' });
+
+    // Sob khali: override muche felo
+    if (!inT && !outT && ot === null) {
+      await AttendanceEdit.deleteOne({ employee: id, date });
+      return res.json({ ok: true, removed: true });
+    }
+
+    const raw = await Attendance.find({
+      userId: emp.proximityId,
+      timestamp: { $gte: dayStart(date), $lte: dayEnd(date) },
+    })
+      .sort({ timestamp: 1 })
+      .lean();
+
+    const effIn = inT ? atTime(date, inT) : raw[0] ? raw[0].timestamp : null;
+    const effOut = outT ? atTime(date, outT) : raw.length > 1 ? raw[raw.length - 1].timestamp : null;
+    if (!effIn) throw new Error('No device punch on this day. Enter an In time.');
+    if (effOut && new Date(effOut) <= new Date(effIn)) throw new Error('Out time must be after In time');
+    if (ot !== null && !effOut) throw new Error('Overtime needs an Out time. Enter an Out time.');
+
+    const saved = await AttendanceEdit.findOneAndUpdate(
+      { employee: id, date },
+      { $set: { inTime: inT, outTime: outT, otMinutes: ot, note } },
+      { upsert: true, new: true }
+    );
+    res.json(saved);
+  } catch (e) {
+    res.status(400).json({ error: errText(e) });
+  }
+}
+
 module.exports = {
   // calc
   OT_ROUND_MIN, pad, dhakaDate, dhakaTime, dayStart, dayEnd, dayOfWeek, isValidDate,
@@ -503,5 +588,5 @@ module.exports = {
   // reports
   dailyReport, monthlyReport, buildDay, summarize, buildPdf,
   // handlers
-  logs, daily, monthly, monthlyPdf,
+  logs, daily, monthly, monthlyPdf, saveEdit,
 };
