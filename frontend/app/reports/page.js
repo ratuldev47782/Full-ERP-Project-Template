@@ -9,6 +9,7 @@ import { IBM_Plex_Sans } from 'next/font/google';
 import SideNavBar from '../components/SideNavBar';
 import DeviceStatus from '../components/DeviceStatus';
 import MonthlyView from '../components/MonthlyView';
+import { formatDateTime, useTimeFormat } from '../timeFormat';
 
 const plex = IBM_Plex_Sans({ subsets: ['latin'], weight: ['400', '500', '600'], display: 'swap' });
 
@@ -52,8 +53,7 @@ async function runSync() {
   return result;
 }
 
-const fmtSyncTime = (iso) =>
-  iso ? new Date(iso).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' }) : null;
+const fmtSyncTime = (iso) => formatDateTime(iso);
 
 /* ---------- shared classes ---------- */
 const focus = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700/40';
@@ -177,6 +177,7 @@ function SearchBox({ by, label, placeholder, onSelect }) {
 }
 
 export default function ReportsPage() {
+  useTimeFormat();
   const router = useRouter();
   const path = usePathname();
 

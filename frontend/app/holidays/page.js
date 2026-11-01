@@ -7,6 +7,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Plus, Pencil, Trash2, CheckCircle2, AlertCircle, Menu, LogOut, RefreshCw } from 'lucide-react';
 import SideNavBar from '../components/SideNavBar';
 import DeviceStatus from '../components/DeviceStatus';
+import { formatDateTime, useTimeFormat } from '../timeFormat';
 
 const API = process.env.NEXT_PUBLIC_API || 'http://localhost:5000';
 
@@ -48,8 +49,7 @@ async function runSync() {
   return result;
 }
 
-const fmtSyncTime = (iso) =>
-  iso ? new Date(iso).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' }) : null;
+const fmtSyncTime = (iso) => formatDateTime(iso);
 
 // Shob date/time Bangladesh time (Asia/Dhaka) onujayi dekhano hoy.
 const TZ = 'Asia/Dhaka';
@@ -63,6 +63,7 @@ const input =
   'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100';
 
 export default function HolidaysPage() {
+  useTimeFormat();
   const router = useRouter();
   const path = usePathname();
 

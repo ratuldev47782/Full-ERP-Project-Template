@@ -7,6 +7,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Pencil, Trash2, CheckCircle2, AlertCircle, Search, Menu, LogOut, RefreshCw } from 'lucide-react';
 import SideNavBar from '../components/SideNavBar';
 import DeviceStatus from '../components/DeviceStatus';
+import { formatDateTime, useTimeFormat } from '../timeFormat';
 
 const API = process.env.NEXT_PUBLIC_API || 'http://localhost:5000';
 
@@ -48,8 +49,7 @@ async function runSync() {
   return result;
 }
 
-const fmtSyncTime = (iso) =>
-  iso ? new Date(iso).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' }) : null;
+const fmtSyncTime = (iso) => formatDateTime(iso);
 
 // Shob date/time Bangladesh time (Asia/Dhaka) onujayi dekhano hoy.
 const TZ = 'Asia/Dhaka';
@@ -185,6 +185,7 @@ function EmployeeSearch({ onSelect, placeholder = 'Search by Employee ID or Prox
 }
 
 export default function LeavesPage() {
+  useTimeFormat();
   const router = useRouter();
   const path = usePathname();
 

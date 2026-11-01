@@ -8,6 +8,7 @@ import { IBM_Plex_Sans } from 'next/font/google';
 import { Menu, RefreshCw } from 'lucide-react';
 import SideNavBar from '../components/SideNavBar';
 import DeviceStatus from '../components/DeviceStatus';
+import { formatDateTime, formatClock, useTimeFormat } from '../timeFormat';
 
 const plex = IBM_Plex_Sans({ subsets: ['latin'], weight: ['400', '500', '600'] });
 
@@ -51,8 +52,7 @@ async function runSync() {
   return result;
 }
 
-const fmtSyncTime = (iso) =>
-  iso ? new Date(iso).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' }) : null;
+const fmtSyncTime = (iso) => formatDateTime(iso);
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -146,14 +146,16 @@ function DayRuler({ start, end, lunchStart, lunchEnd }) {
           >
             <div className="mx-auto h-1.5 w-px bg-zinc-400" />
             {i % every === 0 && (
-              <div className="mt-0.5 text-[11px] tabular-nums text-zinc-500">{pad(Math.floor(m / 60))}</div>
+              <div className="mt-0.5 text-[11px] tabular-nums text-zinc-500">
+                {formatClock(`${pad(Math.floor(m / 60))}:00`)}
+              </div>
             )}
           </div>
         ))}
       </div>
       <p className="mt-1 text-xs text-zinc-500">
-        Works {start}–{lunchOk ? lunchStart : end}
-        {lunchOk && `, lunch until ${lunchEnd}, works until ${end}`}.
+        Works {formatClock(start)}–{formatClock(lunchOk ? lunchStart : end)}
+        {lunchOk && `, lunch until ${formatClock(lunchEnd)}, works until ${formatClock(end)}`}.
       </p>
     </div>
   );
@@ -162,6 +164,7 @@ function DayRuler({ start, end, lunchStart, lunchEnd }) {
 export default function SettingsPage() {
   const router = useRouter();
   const path = usePathname();
+  const [timeFormat, setTimeFormat] = useTimeFormat();
 
   const [f, setF] = useState(null);
   const [msg, setMsg] = useState(null);
@@ -355,6 +358,35 @@ export default function SettingsPage() {
                         lunchEnd={f.lunchEnd}
                       />
                     </div>
+                  </Row>
+
+                  <Row title="Time format" desc="Choose how clock times are displayed throughout the app and in monthly PDFs.">
+                    <div className="flex flex-wrap gap-3">
+                      {[
+                        ['12-hour', '12-hour (AM/PM)'],
+                        ['24-hour', '24-hour'],
+                      ].map(([value, label]) => (
+                        <label
+                          key={value}
+                          className={`flex cursor-pointer items-center gap-2 rounded-md border px-4 py-2 text-sm ${
+                            timeFormat === value
+                              ? 'border-teal-700 bg-teal-50 text-teal-900'
+                              : 'border-zinc-300 text-zinc-700 hover:bg-zinc-50'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="timeFormat"
+                            value={value}
+                            checked={timeFormat === value}
+                            onChange={() => setTimeFormat(value)}
+                            className="accent-teal-800"
+                          />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-xs text-zinc-500">Saved in this browser and applied immediately.</p>
                   </Row>
 
                   <Row title="Weekend" desc="Days marked off are weekly holidays in reports.">

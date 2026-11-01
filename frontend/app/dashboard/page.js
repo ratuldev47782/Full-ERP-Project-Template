@@ -8,6 +8,7 @@ import { RefreshCw, Trash2, Menu } from 'lucide-react';
 import { IBM_Plex_Sans } from 'next/font/google';
 import SideNavBar from '../components/SideNavBar';
 import DeviceStatus from '../components/DeviceStatus';
+import { formatDateTime, formatTime, useTimeFormat } from '../timeFormat';
 
 const plex = IBM_Plex_Sans({ subsets: ['latin'], weight: ['400', '500', '600'], display: 'swap' });
 
@@ -51,17 +52,14 @@ async function runSync() {
   return result;
 }
 
-const fmtSyncTime = (iso) =>
-  iso ? new Date(iso).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' }) : null;
+const fmtSyncTime = (iso) => formatDateTime(iso);
 
 // Shob date/time Bangladesh time (Asia/Dhaka) onujayi dekhano hoy.
 const TZ = 'Asia/Dhaka';
 const todayDhaka = () => new Date().toLocaleDateString('en-CA', { timeZone: TZ }); // yyyy-mm-dd
 const fmtDate = (d) => (d ? String(d).slice(0, 10).split('-').reverse().join('-') : '-'); // dd-mm-yyyy
-const fmtTime = (d) =>
-  d ? new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: TZ }) : '-';
-const fmtDateTime = (d) =>
-  new Date(d).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short', timeZone: TZ });
+const fmtTime = (d) => formatTime(d, { timeZone: TZ });
+const fmtDateTime = (d) => formatDateTime(d, { timeZone: TZ });
 
 const addDays = (s, n) => {
   const d = new Date(`${s}T00:00:00Z`);
@@ -266,6 +264,7 @@ function DeptBars({ rows }) {
 }
 
 export default function Dashboard() {
+  useTimeFormat();
   const router = useRouter();
   const path = usePathname();
 

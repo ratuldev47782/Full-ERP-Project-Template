@@ -292,13 +292,17 @@ const shortDate = (s) => {
 };
 const hms = (min) => `${pad(Math.floor(min / 60))}:${pad(min % 60)}:00`;
 
-function printStamp() {
+function formatDhakaTime(value, timeFormat = '24-hour') {
+  const time = dhakaTime(value);
+  if (timeFormat === '24-hour') return time;
+  const hour = Number(time.slice(0, 2));
+  const period = hour < 12 ? 'AM' : 'PM';
+  return `${pad(hour % 12 || 12)}:${time.slice(3)} ${period}`;
+}
+
+function printStamp(timeFormat = '24-hour') {
   const now = new Date();
-  const t = dhakaTime(now);
-  let h = Number(t.slice(0, 2));
-  const ap = h >= 12 ? 'PM' : 'AM';
-  h = h % 12 || 12;
-  return `${dhakaDate(now)} ${pad(h)}:${t.slice(3, 5)} ${ap}`;
+  return `${dhakaDate(now)} ${formatDhakaTime(now, timeFormat)}`;
 }
 
 // Logo lookup order: LOGO_PATH env > frontend/public/HKD_LOGO.png > backend/assets/HKD_LOGO.png > backend/assets/logo.*
@@ -314,7 +318,7 @@ function findLogo() {
   return candidates.find((p) => fs.existsSync(p)) || null;
 }
 
-function buildPdf(res, { report, settings, month }) {
+function buildPdf(res, { report, settings, month, timeFormat = '24-hour' }) {
   const doc = new PDFDocument({ size: 'A4', margin: 0, info: { Title: `Time Card ${month}` } });
   doc.pipe(res);
 
@@ -409,8 +413,8 @@ function buildPdf(res, { report, settings, month }) {
 
     const vals = [
       shortDate(d.date),
-      d.inTime ? dhakaTime(d.inTime) : '00:00:00',
-      d.outTime ? dhakaTime(d.outTime) : '00:00:00',
+      d.inTime ? formatDhakaTime(d.inTime, timeFormat) : (timeFormat === '12-hour' ? '12:00:00 AM' : '00:00:00'),
+      d.outTime ? formatDhakaTime(d.outTime, timeFormat) : (timeFormat === '12-hour' ? '12:00:00 AM' : '00:00:00'),
       hms(d.otFinalMinutes),
       code,
       special,
@@ -452,7 +456,7 @@ function buildPdf(res, { report, settings, month }) {
 
   // ---- Footer ----
   doc.lineWidth(1).strokeColor('#000').moveTo(L, 806).lineTo(R, 806).stroke();
-  doc.fillColor('#000').font('Helvetica').fontSize(8.5).text(`Print Date & Time: ${printStamp()}`, L, 812, { width: CW, align: 'right', lineBreak: false });
+  doc.fillColor('#000').font('Helvetica').fontSize(8.5).text(`Print Date & Time: ${printStamp(timeFormat)}`, L, 812, { width: CW, align: 'right', lineBreak: false });
 
   doc.end();
 }
@@ -509,8 +513,12 @@ const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 async function monthlyPdf(req, res) {
   const { id } = req.params;
   const { month } = req.query;
+  const timeFormat = req.query.timeFormat || '24-hour';
   if (!mongoose.isValidObjectId(id)) return res.status(400).json({ error: 'Invalid employee ID' });
   if (typeof month !== 'string' || !MONTH.test(month)) return res.status(400).json({ error: 'Month must be in YYYY-MM format' });
+  if (typeof timeFormat !== 'string' || !['12-hour', '24-hour'].includes(timeFormat)) {
+    return res.status(400).json({ error: 'Time format must be 12-hour or 24-hour' });
+  }
   try {
     const report = await monthlyReport(id, month);
     if (!report) return res.status(404).json({ error: 'Employee not found' });
@@ -518,7 +526,7 @@ async function monthlyPdf(req, res) {
     const file = `Attendance_${String(report.employee.employeeId).replace(/[^\w-]/g, '_')}_${month}.pdf`;
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${file}"`);
-    buildPdf(res, { report, settings, month });
+    buildPdf(res, { report, settings, month, timeFormat });
   } catch (e) {
     if (!res.headersSent) res.status(500).json({ error: errText(e) });
   }

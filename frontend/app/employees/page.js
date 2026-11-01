@@ -9,6 +9,7 @@ import { Menu, RefreshCw } from 'lucide-react';
 import { IBM_Plex_Sans } from 'next/font/google';
 import SideNavBar from '../components/SideNavBar';
 import DeviceStatus from '../components/DeviceStatus';
+import { formatDateTime, useTimeFormat } from '../timeFormat';
 
 const plex = IBM_Plex_Sans({ subsets: ['latin'], weight: ['400', '500', '600'], display: 'swap' });
 
@@ -52,8 +53,7 @@ async function runSync() {
   return result;
 }
 
-const fmtSyncTime = (iso) =>
-  iso ? new Date(iso).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' }) : null;
+const fmtSyncTime = (iso) => formatDateTime(iso);
 
 const fields = [
   { key: 'employeeId', label: 'Employee ID', required: true },
@@ -121,6 +121,7 @@ function Note({ type, children }) {
 }
 
 export default function EmployeesPage() {
+  useTimeFormat();
   const router = useRouter();
   const path = usePathname();
 

@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from 'react';
 import { Download, Printer, Loader2, Pencil } from 'lucide-react';
+import { formatTime, useTimeFormat } from '../timeFormat';
 
 const API = process.env.NEXT_PUBLIC_API || 'http://localhost:5000';
 const SYNC_EVENT = 'attendance:synced';
@@ -87,8 +88,7 @@ const TZ = 'Asia/Dhaka';
 const pad = (n) => String(n).padStart(2, '0');
 const todayDhaka = () => new Date().toLocaleDateString('en-CA', { timeZone: TZ });
 const fmtDate = (d) => (d ? String(d).slice(0, 10).split('-').reverse().join('-') : '-');
-const fmtTime = (d) =>
-  d ? new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: TZ }) : '-';
+const fmtTime = (d) => formatTime(d, { timeZone: TZ });
 const dayName = (dateStr) =>
   new Date(`${dateStr}T00:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', timeZone: 'UTC' });
 const fmtHM = (min) => `${pad(Math.floor((min || 0) / 60))}:${pad((min || 0) % 60)}`;
@@ -322,6 +322,7 @@ function EditDayModal({ empId, day, onClose, onSaved }) {
 
 // Ekjon employee-er mashik hajira + summary + edit + PDF download + print.
 export default function MonthlyView({ id }) {
+  const [timeFormat] = useTimeFormat();
   const [month, setMonth] = useState(todayDhaka().slice(0, 7));
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
@@ -365,7 +366,10 @@ export default function MonthlyView({ id }) {
     setPdfBusy(true);
     setErr(null);
     try {
-      await downloadFile(`/api/employees/${id}/monthly-pdf?month=${month}`, `Attendance_${emp.employeeId}_${month}.pdf`);
+      await downloadFile(
+        `/api/employees/${id}/monthly-pdf?month=${month}&timeFormat=${timeFormat}`,
+        `Attendance_${emp.employeeId}_${month}.pdf`
+      );
     } catch (e) {
       setErr(e.message);
     } finally {
@@ -378,7 +382,7 @@ export default function MonthlyView({ id }) {
     setPrintBusy(true);
     setErr(null);
     try {
-      await printFile(`/api/employees/${id}/monthly-pdf?month=${month}`);
+      await printFile(`/api/employees/${id}/monthly-pdf?month=${month}&timeFormat=${timeFormat}`);
     } catch (e) {
       setErr(e.message);
     } finally {

@@ -10,6 +10,7 @@ import { IBM_Plex_Sans } from 'next/font/google';
 import SideNavBar from '../../components/SideNavBar';
 import DeviceStatus from '../../components/DeviceStatus';
 import MonthlyView from '../../components/MonthlyView';
+import { formatDateTime, useTimeFormat } from '../../timeFormat';
 
 const plex = IBM_Plex_Sans({ subsets: ['latin'], weight: ['400', '500', '600'], display: 'swap' });
 
@@ -53,8 +54,7 @@ async function runSync() {
   return result;
 }
 
-const fmtSyncTime = (iso) =>
-  iso ? new Date(iso).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' }) : null;
+const fmtSyncTime = (iso) => formatDateTime(iso);
 
 /* ---------- shared classes ---------- */
 const focus = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700/40';
@@ -62,6 +62,7 @@ const btnSecondary = `rounded-md border border-zinc-300 bg-white px-4 py-2 text-
 const linkBtn = `rounded text-sm font-medium text-teal-800 hover:underline disabled:opacity-60 ${focus}`;
 
 export default function EmployeeDetail() {
+  useTimeFormat();
   const { id } = useParams();
   const router = useRouter();
   const path = usePathname();
