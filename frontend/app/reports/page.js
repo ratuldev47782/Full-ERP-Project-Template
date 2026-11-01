@@ -285,7 +285,6 @@ function MonthlyView({ id }) {
         ['SL', s.sl, 'text-sky-700 bg-sky-50 border-sky-200'],
         ['EL', s.el, 'text-sky-700 bg-sky-50 border-sky-200'],
         ['OT Hours', s.otHours, 'text-slate-700 bg-slate-50 border-slate-200'],
-        ['Holiday OT', s.holidayOtHours, 'text-slate-700 bg-slate-50 border-slate-200'],
         ['Total Hours', s.totalHours, 'text-slate-700 bg-slate-50 border-slate-200'],
       ]
     : [];
@@ -362,9 +361,8 @@ function MonthlyView({ id }) {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {data?.days.map((d) => {
-                const hw = d.holidayWork;
-                const otFinal = hw ? hw.otFinalMinutes : d.otFinalMinutes;
-                const otActual = hw ? hw.otActualMinutes : d.otActualMinutes;
+                const otFinal = d.otFinalMinutes;
+                const otActual = d.otActualMinutes;
                 return (
                   <tr
                     key={d.date}
@@ -378,10 +376,9 @@ function MonthlyView({ id }) {
                     <td className={td}>{fmtTime(d.outTime)}</td>
                     <td className={td}>{d.hours ?? '—'}</td>
                     <td className={td}>
-                      {d.status === 'Present' || hw ? (
+                      {d.status === 'Present' ? (
                         <span className="whitespace-nowrap font-medium">
                           {fmtHM(otFinal)}
-                          {hw && <span className="ml-1 text-[10px] text-purple-600">(H)</span>}
                           {otActual > 0 && otActual !== otFinal && (
                             <span className="ml-1 text-[10px] font-normal text-slate-400">({fmtHM(otActual)})</span>
                           )}
@@ -399,10 +396,10 @@ function MonthlyView({ id }) {
                           >
                             {d.status === 'Missing Out' ? 'Missing out' : d.status}
                           </span>
-                          {d.status === 'Holiday' && (
+                          {d.holidayName && (
                             <span className="truncate text-[10px] text-slate-500">
                               {d.holidayName}
-                              {d.inTime ? ' • worked' : ''}
+                              {d.status !== 'Holiday' ? ' • duty' : ''}
                             </span>
                           )}
                         </span>

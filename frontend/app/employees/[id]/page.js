@@ -4,7 +4,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useParams, usePathname, useRouter } from 'next/navigation';
-import { Download, Menu, LogOut, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Download, Printer, Loader2, Menu, LogOut, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
 import SideNavBar from '../../components/SideNavBar';
 import DeviceStatus from '../../components/DeviceStatus';
 
@@ -43,7 +43,7 @@ async function downloadFile(path, filename) {
     let msg = 'Download failed';
     try {
       msg = (await res.json()).error || msg;
-    } catch {}
+    } catch { }
     throw new Error(msg);
   }
   const url = URL.createObjectURL(await res.blob());
@@ -64,7 +64,7 @@ async function runSync() {
   const at = new Date().toISOString();
   try {
     localStorage.setItem(LAST_SYNC_KEY, at);
-  } catch {}
+  } catch { }
   window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: { at, result } }));
   return result;
 }
@@ -104,8 +104,8 @@ const rowTone = {
   'Not Joined': 'bg-slate-50/60 text-slate-400',
 };
 
-const th = 'border-b border-slate-200 px-2 py-3 font-semibold sm:px-4';
-const td = 'px-2 py-3 sm:px-4';
+const th = 'border-b border-slate-200 px-2 py-3 font-semibold sm:px-4 print:px-1.5 print:py-1.5';
+const td = 'px-2 py-3 sm:px-4 print:px-1.5 print:py-1';
 
 const fields = [
   ['Emp ID', 'employeeId'],
@@ -124,7 +124,7 @@ const fields = [
 function EmployeeInfo({ emp }) {
   if (!emp) return null;
   return (
-    <div className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:grid-cols-3 md:grid-cols-6">
+    <div className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:grid-cols-3 md:grid-cols-6 print:grid-cols-6 print:shadow-none">
       {fields.map(([label, key]) => (
         <div key={key} className="min-w-0">
           <div className="text-[10px] font-medium uppercase tracking-wide text-slate-400">{label}</div>
@@ -139,7 +139,7 @@ function EmployeeInfo({ emp }) {
   );
 }
 
-// Ekjon employee-er mashik hajira + PDF download.
+// Ekjon employee-er mashik hajira + summary table + PDF download + print.
 function MonthlyView({ id }) {
   const [month, setMonth] = useState(todayDhaka().slice(0, 7));
   const [data, setData] = useState(null);
@@ -189,35 +189,68 @@ function MonthlyView({ id }) {
     }
   };
 
+  // Direct browser print dialog open kore
+  const printPage = () => {
+    if (!emp) return;
+    const prev = document.title;
+    document.title = `Attendance_${emp.employeeId}_${month}`;
+    const restore = () => {
+      document.title = prev;
+      window.removeEventListener('afterprint', restore);
+    };
+    window.addEventListener('afterprint', restore);
+    window.print();
+  };
+
   const stats = s
     ? [
-        ['Present', s.presentDays, 'text-green-700 bg-green-50 border-green-200'],
-        ['Absent', s.absent, 'text-red-700 bg-red-50 border-red-200'],
-        ['Missing Out', s.missingOut, 'text-amber-700 bg-amber-50 border-amber-200'],
-        ['Holiday', s.holidayTotal, 'text-purple-700 bg-purple-50 border-purple-200'],
-        ['CL', s.cl, 'text-sky-700 bg-sky-50 border-sky-200'],
-        ['SL', s.sl, 'text-sky-700 bg-sky-50 border-sky-200'],
-        ['EL', s.el, 'text-sky-700 bg-sky-50 border-sky-200'],
-        ['OT Hours', s.otHours, 'text-slate-700 bg-slate-50 border-slate-200'],
-        ['Holiday OT', s.holidayOtHours, 'text-slate-700 bg-slate-50 border-slate-200'],
-        ['Total Hours', s.totalHours, 'text-slate-700 bg-slate-50 border-slate-200'],
-      ]
+      ['Present', s.presentDays, 'text-green-700 bg-green-50 border-green-200'],
+      ['Absent', s.absent, 'text-red-700 bg-red-50 border-red-200'],
+      ['Missing Out', s.missingOut, 'text-amber-700 bg-amber-50 border-amber-200'],
+      ['Holiday', s.holidayTotal, 'text-purple-700 bg-purple-50 border-purple-200'],
+      ['CL', s.cl, 'text-sky-700 bg-sky-50 border-sky-200'],
+      ['SL', s.sl, 'text-sky-700 bg-sky-50 border-sky-200'],
+      ['EL', s.el, 'text-sky-700 bg-sky-50 border-sky-200'],
+      ['OT Hours', s.otHours, 'text-slate-700 bg-slate-50 border-slate-200'],
+      ['Total Hours', s.totalHours, 'text-slate-700 bg-slate-50 border-slate-200'],
+    ]
     : [];
 
   return (
     <>
+      {/* Print-er shomoy page setup */}
+      <style>{`
+        @media print {
+          @page { size: A4; margin: 10mm; }
+          html, body { background: #fff !important; }
+          * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+      `}</style>
+
       {err && (
-        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{err}</div>
+        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 print:hidden">
+          {err}
+        </div>
+      )}
+
+      {/* Sudhu print-e dekhabe */}
+      {emp && (
+        <div className="mb-2 hidden print:block">
+          <div className="text-base font-bold text-slate-900">Monthly Attendance Report</div>
+          <div className="text-xs text-slate-600">
+            {emp.name} ({emp.employeeId}) — {month}
+          </div>
+        </div>
       )}
 
       {emp && (
         <div className="mb-3">
-          <div className="mb-2 text-sm font-semibold text-slate-800">{emp.name}</div>
+          <div className="mb-2 text-sm font-semibold text-slate-800 print:hidden">{emp.name}</div>
           <EmployeeInfo emp={emp} />
         </div>
       )}
 
-      <div className="mb-3 flex flex-wrap items-center gap-3">
+      <div className="mb-3 flex flex-wrap items-center gap-3 print:hidden">
         <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
           Month
           <input
@@ -231,109 +264,135 @@ function MonthlyView({ id }) {
         <button
           onClick={pdf}
           disabled={!emp || pdfBusy}
-          className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60"
+          title="Download PDF"
+          aria-label="Download PDF"
+          className="icon-btn"
         >
-          <Download className="h-4 w-4" />
-          {pdfBusy ? 'Preparing PDF...' : 'Download PDF'}
+          {pdfBusy ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
+        </button>
+
+        <button
+          onClick={printPage}
+          disabled={!emp}
+          title="Print"
+          aria-label="Print"
+          className="icon-btn"
+        >
+          <Printer size={18} />
         </button>
 
         {loading && <span className="text-xs text-slate-500">Loading...</span>}
       </div>
 
-      <div className="mb-3 flex flex-wrap gap-2">
-        {stats.map(([label, val, tone]) => (
-          <span
-            key={label}
-            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium ${tone}`}
-          >
-            {label}
-            <span className="rounded bg-white/70 px-1.5 text-sm font-semibold">{val}</span>
-          </span>
-        ))}
-      </div>
-
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="max-h-[calc(100vh-300px)] min-h-[420px] overflow-y-auto overflow-x-auto">
-          <table className="w-full min-w-[640px] table-fixed text-left text-xs sm:text-sm">
-            <colgroup>
-              <col className="w-[13%]" />
-              <col className="w-[7%]" />
-              <col className="w-[12%]" />
-              <col className="w-[12%]" />
-              <col className="w-[9%]" />
-              <col className="w-[13%]" />
-              <col className="w-[8%]" />
-              <col className="w-[26%]" />
-            </colgroup>
-            <thead className="sticky top-0 z-10 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500 sm:text-xs">
-              <tr>
-                {['Date', 'Day', 'In Time', 'Out Time', 'Hours', 'OT Hours', 'Punches', 'Status'].map((h) => (
-                  <th key={h} className={th}>
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {data?.days.map((d) => {
-                const hw = d.holidayWork;
-                const otFinal = hw ? hw.otFinalMinutes : d.otFinalMinutes;
-                const otActual = hw ? hw.otActualMinutes : d.otActualMinutes;
-                return (
-                  <tr key={d.date} className={`transition hover:bg-blue-50 ${rowTone[d.status] || (d.isWeekend ? 'bg-slate-50' : '')}`}>
-                    <td className={`${td} font-medium text-slate-800`}>{fmtDate(d.date)}</td>
-                    <td className={`${td} ${d.isWeekend ? 'font-semibold text-slate-500' : 'text-slate-600'}`}>{dayName(d.date)}</td>
-                    <td className={td}>{fmtTime(d.inTime)}</td>
-                    <td className={td}>{fmtTime(d.outTime)}</td>
-                    <td className={td}>{d.hours ?? '—'}</td>
-                    <td className={td}>
-                      {d.status === 'Present' || hw ? (
-                        <>
-                          <div className="font-medium">
-                            {fmtHM(otFinal)}
-                            {hw && <span className="ml-1 text-[10px] text-purple-600">(H)</span>}
-                          </div>
-                          {otActual > 0 && otActual !== otFinal && (
-                            <div className="text-[10px] text-slate-400">actual {fmtHM(otActual)}</div>
-                          )}
-                        </>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                    <td className={td}>{d.punches || '—'}</td>
-                    <td className={td}>
-                      {d.status ? (
-                        <>
-                          <span
-                            className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset sm:px-2.5 sm:text-xs ${badge[d.status]}`}
-                          >
-                            {d.status === 'Missing Out' ? 'Missing out' : d.status}
-                          </span>
-                          {d.status === 'Holiday' && (
-                            <div className="mt-0.5 truncate text-[10px] text-slate-500">
-                              {d.holidayName}
-                              {d.inTime ? ' • worked' : ''}
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        '—'
-                      )}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start print:flex-row print:items-start">
+        {/* Main attendance table */}
+        <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm print:shadow-none">
+          <div className="max-h-[calc(100vh-300px)] min-h-[420px] overflow-y-auto overflow-x-auto print:max-h-none print:min-h-0 print:overflow-visible">
+            <table className="w-full min-w-[640px] table-fixed text-left text-xs sm:text-sm print:min-w-0 print:text-[10px]">
+              <colgroup>
+                <col className="w-[13%]" />
+                <col className="w-[7%]" />
+                <col className="w-[12%]" />
+                <col className="w-[12%]" />
+                <col className="w-[9%]" />
+                <col className="w-[13%]" />
+                <col className="w-[8%]" />
+                <col className="w-[26%]" />
+              </colgroup>
+              <thead className="sticky top-0 z-10 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500 sm:text-xs print:static">
+                <tr>
+                  {['Date', 'Day', 'In Time', 'Out Time', 'Hours', 'OT Hours', 'Punches', 'Status'].map((h) => (
+                    <th key={h} className={th}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {data?.days.map((d) => {
+                  const otFinal = d.otFinalMinutes;
+                  const otActual = d.otActualMinutes;
+                  return (
+                    <tr
+                      key={d.date}
+                      className={`transition hover:bg-blue-50 print:break-inside-avoid ${rowTone[d.status] || (d.isWeekend ? 'bg-slate-50' : '')}`}
+                    >
+                      <td className={`${td} font-medium text-slate-800`}>{fmtDate(d.date)}</td>
+                      <td className={`${td} ${d.isWeekend ? 'font-semibold text-slate-500' : 'text-slate-600'}`}>{dayName(d.date)}</td>
+                      <td className={td}>{fmtTime(d.inTime)}</td>
+                      <td className={td}>{fmtTime(d.outTime)}</td>
+                      <td className={td}>{d.hours ?? '—'}</td>
+                      <td className={td}>
+                        {d.status === 'Present' ? (
+                          <>
+                            <div className="font-medium">{fmtHM(otFinal)}</div>
+                            {otActual > 0 && otActual !== otFinal && (
+                              <div className="text-[10px] text-slate-400">actual {fmtHM(otActual)}</div>
+                            )}
+                          </>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                      <td className={td}>{d.punches || '—'}</td>
+                      <td className={td}>
+                        {d.status ? (
+                          <>
+                            <span
+                              className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset sm:px-2.5 sm:text-xs ${badge[d.status]}`}
+                            >
+                              {d.status === 'Missing Out' ? 'Missing out' : d.status}
+                            </span>
+                            {d.holidayName && (
+                              <div className="mt-0.5 truncate text-[10px] text-slate-500">
+                                {d.holidayName}
+                                {d.status !== 'Holiday' ? ' • duty' : ''}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {data && !data.days.length && (
+                  <tr>
+                    <td colSpan={8} className="px-3 py-16 text-center text-sm text-slate-400">
+                      No data.
                     </td>
                   </tr>
-                );
-              })}
-              {data && !data.days.length && (
-                <tr>
-                  <td colSpan={8} className="px-3 py-16 text-center text-sm text-slate-400">
-                    No data.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
+
+        {/* Side summary table */}
+        {s && (
+          <aside className="w-full shrink-0 lg:sticky lg:top-0 lg:w-56 print:static print:w-44">
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm print:shadow-none">
+              <table className="w-full text-left text-xs sm:text-sm print:text-[10px]">
+                <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500 sm:text-xs">
+                  <tr>
+                    <th colSpan={2} className={th}>
+                      Summary
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {stats.map(([label, val, tone]) => (
+                    <tr key={label}>
+                      <td className={`${td} py-2 text-slate-600`}>{label}</td>
+                      <td className={`${td} py-2 text-right font-semibold ${tone.split(' ')[0]}`}>{val ?? 0}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </aside>
+        )}
       </div>
     </>
   );
@@ -407,17 +466,20 @@ export default function EmployeeDetail() {
   if (!ready) return null;
 
   return (
-    <div className="flex h-screen bg-slate-100 text-slate-800">
-      <SideNavBar
-        collapsed={collapsed}
-        onToggle={() => setCollapsed((c) => !c)}
-        mobileOpen={mobileOpen}
-        onClose={() => setMobileOpen(false)}
-        onLogout={logout}
-      />
+    <div className="flex h-screen bg-slate-100 text-slate-800 print:block print:h-auto print:bg-white">
+      {/* `contents` thakle layout bhange na; print-e puro sidebar hide hoy */}
+      <div className="contents print:hidden">
+        <SideNavBar
+          collapsed={collapsed}
+          onToggle={() => setCollapsed((c) => !c)}
+          mobileOpen={mobileOpen}
+          onClose={() => setMobileOpen(false)}
+          onLogout={logout}
+        />
+      </div>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 shadow-sm md:px-6">
+      <div className="flex min-w-0 flex-1 flex-col print:block">
+        <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 shadow-sm md:px-6 print:hidden">
           <div className="flex min-w-0 items-center gap-3">
             <button
               onClick={() => setMobileOpen(true)}
@@ -464,10 +526,10 @@ export default function EmployeeDetail() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto p-4 md:p-6">
+        <main className="flex-1 overflow-auto p-4 md:p-6 print:overflow-visible print:p-0">
           <button
             onClick={() => router.push('/employees')}
-            className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-800"
+            className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-800 print:hidden"
           >
             <span>←</span> Back to Employee List
           </button>
@@ -478,9 +540,8 @@ export default function EmployeeDetail() {
       {/* Toast */}
       {toast && (
         <div
-          className={`fixed bottom-4 right-4 z-50 flex max-w-sm items-start gap-2 rounded-lg border px-4 py-3 text-sm shadow-lg ${
-            toast.err ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700'
-          }`}
+          className={`fixed bottom-4 right-4 z-50 flex max-w-sm items-start gap-2 rounded-lg border px-4 py-3 text-sm shadow-lg print:hidden ${toast.err ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700'
+            }`}
         >
           {toast.err ? <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> : <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />}
           <span>{toast.text}</span>

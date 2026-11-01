@@ -52,7 +52,7 @@ const overlap = (aS, aE, bS, bE) => Math.max(0, Math.min(aE, bE) - Math.max(aS, 
 //   0:00-0:15 -> 0h | 0:16-1:15 -> 1h | 1:16-2:15 -> 2h | 2:16-3:15 -> 3h ...
 const roundOtMinutes = (actualMin) => Math.max(0, Math.ceil((actualMin - OT_GRACE_MIN) / 60)) * 60;
 
-// Normal working day.
+// Normal working day (holiday-te present thakleo ekhoni hisab hoy).
 //   effective in = MAX(actual in, office start)
 //   lunch shudhu tokhon-i bad jay jokhon interval-er sathe overlap kore
 //   OT = office end-er por theke (second ignore)
@@ -84,16 +84,6 @@ function computeWork(date, inTime, outTime, s) {
   };
 }
 
-// Holiday-te kaj korle: puro kaj-er somoy (lunch bad) holiday work/OT hishebe alada rakha hoy.
-function computeHolidayWork(date, inTime, outTime, s) {
-  const base = dayStart(date).getTime();
-  const at = (hhmm) => Math.floor((base + hhmmToMin(hhmm) * MIN) / MIN);
-  const inM = Math.floor(new Date(inTime).getTime() / MIN);
-  const outM = Math.floor(new Date(outTime).getTime() / MIN);
-  const worked = Math.max(0, outM - inM - overlap(inM, outM, at(s.lunchStart), at(s.lunchEnd)));
-  return { workedMinutes: worked, otActualMinutes: worked, otFinalMinutes: roundOtMinutes(worked) };
-}
-
 const settingsInfo = (s) => {
   const total = hhmmToMin(s.officeEnd) - hhmmToMin(s.officeStart);
   const lunch = hhmmToMin(s.lunchEnd) - hhmmToMin(s.lunchStart);
@@ -107,8 +97,8 @@ const settingsInfo = (s) => {
 const isoDate = (d) => (d ? new Date(d).toISOString().slice(0, 10) : null); // joinDate (date input) -> yyyy-mm-dd
 
 // Ek din-er hisab: prothom punch = IN, shesh punch = OUT
-// Status priority: Not Joined (punch nai) > Holiday > Leave (CL/SL/EL) > Present / Missing Out > Weekend > Absent
-// Holiday/Leave-e punch thakle punch time preserve thake.
+// Status priority: Not Joined (punch nai) > Holiday (punch na thakle) > Leave (CL/SL/EL) > Present / Missing Out > Weekend > Absent
+// Holiday-te punch thakle ta general duty: Present / Missing Out hishebe normal-e count hoy (alada Holiday OT nai).
 function buildDay(date, times, ctx) {
   const { settings, holiday, leave, joinStr, todayStr } = ctx;
   const inTime = times[0] || null;
@@ -118,7 +108,7 @@ function buildDay(date, times, ctx) {
 
   let status = '';
   if (!hasPunch && joinStr && date < joinStr) status = 'Not Joined';
-  else if (holiday) status = 'Holiday';
+  else if (holiday) status = hasPunch ? (outTime ? 'Present' : 'Missing Out') : 'Holiday';
   else if (leave) status = leave.type;
   else if (hasPunch) status = outTime ? 'Present' : 'Missing Out';
   else if (isWeekend) status = 'Weekend';
@@ -127,15 +117,13 @@ function buildDay(date, times, ctx) {
   const day = {
     date, inTime, outTime, effectiveIn: null, hours: null, punches: times.length, status, isWeekend,
     workedMinutes: 0, regularMinutes: 0, otActualMinutes: 0, otFinalMinutes: 0,
-    holidayWork: null, holidayName: holiday ? holiday.name : null,
+    holidayName: holiday ? holiday.name : null,
     leaveType: leave ? leave.type : null, leaveNote: leave ? leave.note || '' : '',
   };
 
   if (status === 'Present') {
     Object.assign(day, computeWork(date, inTime, outTime, settings));
     day.hours = Number((day.workedMinutes / 60).toFixed(2));
-  } else if (status === 'Holiday' && outTime) {
-    day.holidayWork = computeHolidayWork(date, inTime, outTime, settings);
   }
   return day;
 }
@@ -146,7 +134,6 @@ function summarize(days, todayStr = dhakaDate(new Date())) {
   const s = {
     present: 0, absent: 0, missingOut: 0, weekend: 0, holiday: 0, cl: 0, sl: 0, el: 0,
     totalHours: 0, otActualMinutes: 0, otFinalMinutes: 0,
-    holidayWorkMinutes: 0, holidayOtActualMinutes: 0, holidayOtFinalMinutes: 0,
     totalDays: 0, workingDays: 0,
   };
   for (const d of days) {
@@ -159,18 +146,12 @@ function summarize(days, todayStr = dhakaDate(new Date())) {
     if (d.hours) s.totalHours += d.hours;
     s.otActualMinutes += d.otActualMinutes;
     s.otFinalMinutes += d.otFinalMinutes;
-    if (d.holidayWork) {
-      s.holidayWorkMinutes += d.holidayWork.workedMinutes;
-      s.holidayOtActualMinutes += d.holidayWork.otActualMinutes;
-      s.holidayOtFinalMinutes += d.holidayWork.otFinalMinutes;
-    }
   }
   s.totalHours = Number(s.totalHours.toFixed(2));
   s.presentDays = s.present + s.missingOut;
   s.leave = s.cl + s.sl + s.el;
   s.holidayTotal = s.holiday + s.weekend; // time card-e weekend-o H
   s.otHours = s.otFinalMinutes / 60;
-  s.holidayOtHours = s.holidayOtFinalMinutes / 60;
   return s;
 }
 
@@ -216,7 +197,6 @@ async function dailyReport(dateStr) {
       status: day.status,
       otActualMinutes: day.otActualMinutes,
       otFinalMinutes: day.otFinalMinutes,
-      holidayWork: day.holidayWork,
       holidayName: day.holidayName,
     };
   });
@@ -348,10 +328,10 @@ function buildPdf(res, { report, settings, month }) {
   const rows = report.days.filter((d) => d.status !== '' && d.date <= dhakaDate(new Date()));
   for (const d of rows) {
     const code = CODE[d.status] || '';
-    const hw = d.status === 'Holiday' ? d.holidayWork : null;
-    const ot = hw ? hw.otFinalMinutes : d.otFinalMinutes;
+    const ot = d.otFinalMinutes;
     let special = '';
-    if (d.status === 'Holiday') special = (d.holidayName || 'Holiday') + (d.inTime ? ' (worked)' : '');
+    if (d.status === 'Holiday') special = d.holidayName || 'Holiday';
+    else if (d.holidayName) special = `${d.holidayName} (duty)`; // holiday-te present
     else if (d.status === 'Weekend') special = 'Weekend';
     else if (LEAVE_NAME[d.status]) special = LEAVE_NAME[d.status];
     else if (d.status === 'Missing Out') special = 'Missing check-out';
@@ -382,11 +362,11 @@ function buildPdf(res, { report, settings, month }) {
   // ---- Monthly summary ----
   doc.font('Helvetica-Bold').fontSize(9).fillColor('#000').text('Monthly Attendance Summary', L, yy, { width: CW, align: 'center' });
   yy += 14;
-  const hol = (sum.holidayTotal);
+  const hol = sum.holidayTotal;
   const sumCols = [
     ['Total Days', sum.totalDays], ['Working Days', sum.workingDays], ['Present', sum.presentDays], ['Absent', sum.absent],
     ['Holiday', hol], ['CL', sum.cl], ['SL', sum.sl], ['EL', sum.el],
-    ['OT Hours', Number(sum.otHours.toFixed(2))], ['Holiday OT', Number(sum.holidayOtHours.toFixed(2))],
+    ['OT Hours', Number(sum.otHours.toFixed(2))],
   ];
   const sw = CW / sumCols.length;
   sumCols.forEach(([t, v], i) => {
@@ -479,7 +459,7 @@ async function monthlyPdf(req, res) {
 module.exports = {
   // calc
   OT_GRACE_MIN, pad, dhakaDate, dhakaTime, dayStart, dayEnd, dayOfWeek, isValidDate,
-  hhmmToMin, fmtHM, monthInfo, roundOtMinutes, computeWork, computeHolidayWork, settingsInfo,
+  hhmmToMin, fmtHM, monthInfo, roundOtMinutes, computeWork, settingsInfo,
   // reports
   dailyReport, monthlyReport, buildDay, summarize, buildPdf,
   // handlers

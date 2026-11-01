@@ -157,7 +157,9 @@ export default function HolidaysPage() {
         body: JSON.stringify({ date, name }),
       });
       let text = editId ? 'Holiday updated.' : 'Holiday added.';
-      if (r.conflictingLeaves) text += ` Note: ${r.conflictingLeaves} leave record(s) exist on this date; the report will show Holiday.`;
+      if (r.conflictingLeaves) {
+        text += ` Note: ${r.conflictingLeaves} leave record(s) exist on this date; the report will show Holiday unless the employee punched in.`;
+      }
       setMsg({ type: 'ok', text });
       if (date.slice(0, 4) !== year) setYear(date.slice(0, 4));
       reset();
@@ -250,7 +252,9 @@ export default function HolidaysPage() {
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-slate-800">Holiday Management</h2>
-              <p className="text-xs text-slate-500">Configured holidays automatically show as Holiday in every report.</p>
+              <p className="text-xs text-slate-500">
+                Configured holidays show as Holiday in reports. If an employee punches in on a holiday, it counts as a normal working day.
+              </p>
             </div>
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
               Year

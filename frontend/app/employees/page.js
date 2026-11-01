@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Plus, X, Search, Pencil, Trash2, Users, CheckCircle2, AlertCircle, Menu, LogOut, RefreshCw } from 'lucide-react';
+import { Plus, X, Pencil, Trash2, Users, CheckCircle2, AlertCircle, Menu, LogOut, RefreshCw } from 'lucide-react';
 import SideNavBar from '../components/SideNavBar';
 import DeviceStatus from '../components/DeviceStatus';
 
@@ -67,6 +67,17 @@ const fields = [
 
 const empty = Object.fromEntries(fields.map((f) => [f.key, '']));
 
+// Alada alada search input (key, placeholder)
+const searchFields = [
+  ['employeeId', 'Employee ID'],
+  ['proximityId', 'Proximity ID'],
+  ['name', 'Name'],
+];
+
+const emptySearch = { employeeId: '', proximityId: '', name: '' };
+
+const norm = (v) => String(v ?? '').toLowerCase().trim();
+
 const th = 'px-5 py-4 text-left font-semibold whitespace-nowrap';
 const td = 'px-5 py-4 align-middle';
 
@@ -81,7 +92,7 @@ export default function EmployeesPage() {
   const [list, setList] = useState([]);
   const [editId, setEditId] = useState(null);
   const [showForm, setShowForm] = useState(false);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(emptySearch);
   const [msg, setMsg] = useState(null); // { type: 'ok' | 'err', text }
   const [saving, setSaving] = useState(false);
 
@@ -201,12 +212,15 @@ export default function EmployeesPage() {
     }
   };
 
-  const shown = list.filter((e) =>
-    [e.employeeId, e.name, e.proximityId, e.department, e.designation]
-      .join(' ')
-      .toLowerCase()
-      .includes(search.toLowerCase())
+  // Tinta search input-er shob condition ekshathe milte hobe
+  const shown = list.filter(
+    (e) =>
+      norm(e.employeeId).includes(norm(search.employeeId)) &&
+      norm(e.proximityId).includes(norm(search.proximityId)) &&
+      norm(e.name).includes(norm(search.name))
   );
+
+  const hasSearch = Object.values(search).some(Boolean);
 
   if (!ready) return null;
 
@@ -360,14 +374,31 @@ export default function EmployeesPage() {
                 <span className="text-sm font-semibold text-slate-800">Employee List</span>
                 <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">{shown.length}</span>
               </div>
-              <div className="relative w-full sm:w-72">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search name, ID, department..."
-                  className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
+
+              {/* Tinta alada search input */}
+              <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+                {searchFields.map(([key, label]) => (
+                  <div key={key} className="w-full sm:w-40">
+                    <input
+                      value={search[key]}
+                      onChange={(e) => setSearch((s) => ({ ...s, [key]: e.target.value }))}
+                      placeholder={label}
+                      aria-label={`Search by ${label}`}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </div>
+                ))}
+                {hasSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch(emptySearch)}
+                    title="Clear search"
+                    aria-label="Clear search"
+                    className="icon-btn"
+                  >
+                    <X size={18} />
+                  </button>
+                )}
               </div>
             </div>
 
