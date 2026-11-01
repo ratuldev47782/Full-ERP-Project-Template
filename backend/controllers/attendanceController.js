@@ -260,12 +260,17 @@ function printStamp() {
   return `${dhakaDate(now)} ${pad(h)}:${t.slice(3, 5)} ${ap}`;
 }
 
+// Logo lookup order: LOGO_PATH env > frontend/public/HKD_LOGO.png > backend/assets/HKD_LOGO.png > backend/assets/logo.*
 function findLogo() {
-  for (const f of ['logo.png', 'logo.jpg', 'logo.jpeg']) {
-    const p = path.join(__dirname, '..', 'assets', f);
-    if (fs.existsSync(p)) return p;
-  }
-  return null;
+  const candidates = [
+    process.env.LOGO_PATH,
+    path.join(__dirname, '..', '..', 'frontend', 'public', 'HKD_LOGO.png'),
+    path.join(__dirname, '..', 'assets', 'HKD_LOGO.png'),
+    path.join(__dirname, '..', 'assets', 'logo.png'),
+    path.join(__dirname, '..', 'assets', 'logo.jpg'),
+    path.join(__dirname, '..', 'assets', 'logo.jpeg'),
+  ].filter(Boolean);
+  return candidates.find((p) => fs.existsSync(p)) || null;
 }
 
 function buildPdf(res, { report, settings, month }) {
@@ -273,49 +278,62 @@ function buildPdf(res, { report, settings, month }) {
   doc.pipe(res);
 
   const W = 595.28;
-  const L = 28;
-  const R = W - 28;
+  const L = 29;
+  const R = W - 29;
   const CW = R - L;
   const [y, m] = month.split('-').map(Number);
   const emp = report.employee;
   const sum = report.summary;
+  const todayStr = dhakaDate(new Date());
 
   // ---- Header ----
   const logo = findLogo();
   if (logo) {
-    try { doc.image(logo, L + 4, 22, { fit: [56, 56] }); } catch (e) {}
+    try {
+      // Logo company name/address block-er thik bam pashe boshe (reference-er moto), aspect ratio thik rekhe
+      const LOGO_H = 46;
+      const img = doc.openImage(logo);
+      const lw = img.width * (LOGO_H / img.height);
+      const textW = Math.max(
+        doc.font('Helvetica-Bold').fontSize(16).widthOfString(settings.companyName || ''),
+        doc.font('Helvetica').fontSize(10).widthOfString(settings.companyAddress || '')
+      );
+      const lx = Math.max(L, (W - textW) / 2 - lw - 14);
+      doc.image(logo, lx, 14, { width: lw, height: LOGO_H });
+    } catch (e) {}
   }
-  doc.fillColor('#000').font('Helvetica-Bold').fontSize(16).text(settings.companyName, L, 24, { width: CW, align: 'center' });
-  doc.font('Helvetica').fontSize(9).text(settings.companyAddress, L, 44, { width: CW, align: 'center' });
-  doc.font('Helvetica-Bold').fontSize(9).text(`EMPLOYEE TIME CARD MONTH OF : (${MONTHS[m - 1]} - ${y})`, L, 58, { width: CW, align: 'center' });
-  doc.lineWidth(1.2).moveTo(L, 82).lineTo(R, 82).stroke();
+  doc.fillColor('#000').font('Helvetica-Bold').fontSize(16).text(settings.companyName, L, 16, { width: CW, align: 'center', lineBreak: false });
+  doc.font('Helvetica').fontSize(10).text(settings.companyAddress, L, 36, { width: CW, align: 'center', lineBreak: false });
+  doc.font('Helvetica-Bold').fontSize(8.5).text(`EMPLOYEE TIME CARD MONTH OF : (${MONTHS[m - 1]} - ${y} )`, L, 50, { width: CW, align: 'center', lineBreak: false });
+  doc.lineWidth(1.2).strokeColor('#000').moveTo(L, 64).lineTo(R, 64).stroke();
 
   // ---- Employee info ----
   const joinDate = emp.joinDate ? new Date(emp.joinDate).toISOString().slice(0, 10) : '';
   const left = [['EMPLOYEE ID', emp.employeeId], ['NAME', emp.name], ['JOIN DATE', joinDate], ['GRADE', emp.grade], ['LINE', emp.line]];
   const right = [['DESIGNATION', emp.designation], ['DEPARTMENT', emp.department], ['SECTION', emp.section], ['SUB-SECTION', emp.subSection], ['CARD NO', emp.cardNo]];
-  const infoY = 90;
-  const rowI = 14;
+  const infoY = 71;
+  const rowI = 17;
   const put = (label, val, lx, vx, w, yy) => {
-    doc.font('Helvetica-Bold').fontSize(8.5).text(label, lx, yy, { width: vx - lx, lineBreak: false });
+    doc.fillColor('#000').font('Helvetica-Bold').fontSize(8.5).text(label, lx, yy, { width: vx - lx, lineBreak: false });
     doc.text(`: ${val || ''}`, vx, yy, { width: w, lineBreak: false, ellipsis: true });
   };
-  left.forEach(([a, b], i) => put(a, b, L + 4, L + 90, 190, infoY + i * rowI));
-  right.forEach(([a, b], i) => put(a, b, L + 290, L + 375, CW - 380, infoY + i * rowI));
+  left.forEach(([a, b], i) => put(a, b, L + 2, L + 119, 200, infoY + i * rowI));
+  right.forEach(([a, b], i) => put(a, b, L + 298, L + 390, R - (L + 390), infoY + i * rowI));
 
   // ---- Table ----
   const cols = [
-    ['DATE', 0.14], ['IN TIME', 0.15], ['OUT TIME', 0.16], ['OT HOURS', 0.15], ['STATUS', 0.12], ['SPECIAL STATUS', 0.28],
+    ['DATE', 0.107], ['IN TIME', 0.118], ['OUT TIME', 0.15], ['OT HOURS', 0.175], ['STATUS', 0.17], ['SPECIAL STATUS', 0.28],
   ].map(([t, f]) => [t, f * CW]);
-  const ty = infoY + 5 * rowI + 8;
+  const ty = infoY + 5 * rowI + 2;
   const hH = 18;
-  const rH = 15.5;
+  const rH = 16.4;
 
   const cell = (x, yy, w, h, text, o = {}) => {
     if (o.fill) doc.save().rect(x, yy, w, h).fill(o.fill).restore();
-    doc.lineWidth(0.6).strokeColor('#000').rect(x, yy, w, h).stroke();
-    doc.fillColor('#000').font(o.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(o.size || 8);
-    doc.text(String(text ?? ''), x + 2, yy + (h - (o.size || 8)) / 2 - 0.5, { width: w - 4, align: o.align || 'center', lineBreak: false, ellipsis: true });
+    doc.lineWidth(0.7).strokeColor('#000').rect(x, yy, w, h).stroke();
+    const size = o.size || 8;
+    doc.fillColor('#000').font(o.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(size);
+    doc.text(String(text ?? ''), x + 3, yy + (h - size) / 2 - 0.5, { width: w - 6, align: o.align || 'center', lineBreak: false, ellipsis: true });
   };
 
   let x = L;
@@ -325,66 +343,75 @@ function buildPdf(res, { report, settings, month }) {
   });
 
   let yy = ty + hH;
-  const rows = report.days.filter((d) => d.status !== '' && d.date <= dhakaDate(new Date()));
-  for (const d of rows) {
+  // Pura mash-er shob din; ajker por-er din-gulo shudhu date, baki cell faka
+  for (const d of report.days) {
+    const blank = d.date > todayStr || d.status === '';
+    if (blank) {
+      const emptyVals = [shortDate(d.date), '', '', '', '', ''];
+      x = L;
+      cols.forEach(([, w], i) => {
+        cell(x, yy, w, rH, emptyVals[i], { bold: i === 0, size: 8 });
+        x += w;
+      });
+      yy += rH;
+      continue;
+    }
+
     const code = CODE[d.status] || '';
-    const ot = d.otFinalMinutes;
+
+    // Special status: holiday name / leave name / missing check-out (weekend blank)
     let special = '';
-    if (d.status === 'Holiday') special = d.holidayName || 'Holiday';
-    else if (d.holidayName) special = `${d.holidayName} (duty)`; // holiday-te present
-    else if (d.status === 'Weekend') special = 'Weekend';
+    if (d.status === 'Holiday') special = d.holidayName || '';
+    else if (d.holidayName) special = `${d.holidayName} (duty)`;
     else if (LEAVE_NAME[d.status]) special = LEAVE_NAME[d.status];
     else if (d.status === 'Missing Out') special = 'Missing check-out';
-    else if (d.status === 'Not Joined') special = 'Not joined';
 
-    const fill = code === 'H' ? '#f0f0f0' : null;
     const vals = [
       shortDate(d.date),
       d.inTime ? dhakaTime(d.inTime) : '00:00:00',
       d.outTime ? dhakaTime(d.outTime) : '00:00:00',
-      hms(ot),
+      hms(d.otFinalMinutes),
       code,
       special,
     ];
     x = L;
     cols.forEach(([, w], i) => {
-      cell(x, yy, w, rH, vals[i], { fill, bold: i === 4, size: 7.5, align: i === 5 ? 'left' : 'center' });
+      cell(x, yy, w, rH, vals[i], { bold: i !== 5, size: 8, align: i === 5 ? 'left' : 'center' });
       x += w;
     });
     yy += rH;
   }
 
-  // Total OT (reference-er niche-er 36 box)
+  // Total OT (shudhu number, jemon 36)
   const otX = L + cols[0][1] + cols[1][1] + cols[2][1];
-  cell(otX, yy, cols[3][1], rH, `Total ${hms(sum.otFinalMinutes)}`, { bold: true, fill: '#d9d9d9', size: 7.5 });
-  yy += rH + 14;
+  cell(otX, yy, cols[3][1], rH, Number(sum.otHours.toFixed(2)), { bold: true, fill: '#d9d9d9', size: 8 });
+  yy += rH + 8;
 
-  // ---- Monthly summary ----
-  doc.font('Helvetica-Bold').fontSize(9).fillColor('#000').text('Monthly Attendance Summary', L, yy, { width: CW, align: 'center' });
-  yy += 14;
-  const hol = sum.holidayTotal;
+  // ---- Monthly summary (bottom right, 5 box) ----
   const sumCols = [
-    ['Total Days', sum.totalDays], ['Working Days', sum.workingDays], ['Present', sum.presentDays], ['Absent', sum.absent],
-    ['Holiday', hol], ['CL', sum.cl], ['SL', sum.sl], ['EL', sum.el],
-    ['OT Hours', Number(sum.otHours.toFixed(2))],
+    ['Present', sum.presentDays], ['Absent', sum.absent], ['Holiday', sum.holidayTotal],
+    ['Leave', sum.leave], ['Total Days', sum.totalDays],
   ];
-  const sw = CW / sumCols.length;
+  const sumW = 216;
+  const sx0 = R - sumW;
+  const sw = sumW / sumCols.length;
+  doc.fillColor('#000').font('Helvetica').fontSize(8.5).text('Monthly Attendance Summary', sx0, yy, { width: sumW, align: 'center', lineBreak: false });
+  yy += 13;
   sumCols.forEach(([t, v], i) => {
-    cell(L + i * sw, yy, sw, 16, t, { bold: true, fill: '#d9d9d9', size: 7 });
-    cell(L + i * sw, yy + 16, sw, 18, v, { bold: true, size: 9 });
+    cell(sx0 + i * sw, yy, sw, 16, t, { size: 7.5 });
+    cell(sx0 + i * sw, yy + 16, sw, 18, v, { size: 8.5 });
   });
 
-  // ---- Signatures ----
-  const sy = 770;
-  const sigW = 150;
-  [['Prepared By', L], ['Checked By', L + (CW - sigW) / 2], ['Authorized Signature', R - sigW]].forEach(([t, sx]) => {
-    doc.lineWidth(0.8).moveTo(sx, sy).lineTo(sx + sigW, sy).stroke();
-    doc.font('Helvetica-Bold').fontSize(8.5).text(t, sx, sy + 4, { width: sigW, align: 'center', lineBreak: false });
+  // ---- Signatures (bottom left) ----
+  const sigs = [['SIGNATURE OF EMPLOYEE', 733], ['SIGNATURE OF SV/OFFICER', 753]];
+  sigs.forEach(([t, sy]) => {
+    doc.fillColor('#000').font('Helvetica-Bold').fontSize(8.5).text(t, L + 2, sy, { width: 150, lineBreak: false });
+    doc.lineWidth(0.8).strokeColor('#000').moveTo(L + 152, sy + 9).lineTo(L + 295, sy + 9).stroke();
   });
 
   // ---- Footer ----
-  doc.lineWidth(1).moveTo(L, 806).lineTo(R, 806).stroke();
-  doc.font('Helvetica').fontSize(8.5).text(`Print Date & Time: ${printStamp()}`, L, 812, { width: CW, align: 'right', lineBreak: false });
+  doc.lineWidth(1).strokeColor('#000').moveTo(L, 806).lineTo(R, 806).stroke();
+  doc.fillColor('#000').font('Helvetica').fontSize(8.5).text(`Print Date & Time: ${printStamp()}`, L, 812, { width: CW, align: 'right', lineBreak: false });
 
   doc.end();
 }

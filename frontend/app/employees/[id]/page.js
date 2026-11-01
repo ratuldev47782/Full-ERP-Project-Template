@@ -4,9 +4,13 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useParams, usePathname, useRouter } from 'next/navigation';
-import { Download, Printer, Loader2, Menu, LogOut, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
+import Link from 'next/link';
+import { Download, Printer, Loader2, Menu, RefreshCw } from 'lucide-react';
+import { IBM_Plex_Sans } from 'next/font/google';
 import SideNavBar from '../../components/SideNavBar';
 import DeviceStatus from '../../components/DeviceStatus';
+
+const plex = IBM_Plex_Sans({ subsets: ['latin'], weight: ['400', '500', '600'], display: 'swap' });
 
 const API = process.env.NEXT_PUBLIC_API || 'http://localhost:5000';
 
@@ -35,18 +39,23 @@ async function api(path, options = {}) {
   return data;
 }
 
-// File (PDF) download: token header-shoho fetch kore browser-e save kore
-async function downloadFile(path, filename) {
+// PDF blob fetch (token header shoho)
+async function fetchPdfBlob(path) {
   const res = await fetch(API + path, { headers: authHeader() });
   if (res.status === 401) unauthorized();
   if (!res.ok) {
-    let msg = 'Download failed';
+    let msg = 'PDF request failed';
     try {
       msg = (await res.json()).error || msg;
     } catch { }
     throw new Error(msg);
   }
-  const url = URL.createObjectURL(await res.blob());
+  return res.blob();
+}
+
+// PDF download: browser-e save kore
+async function downloadFile(path, filename) {
+  const url = URL.createObjectURL(await fetchPdfBlob(path));
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
@@ -54,6 +63,30 @@ async function downloadFile(path, filename) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// Print: ekoi server PDF hidden iframe-e khule print dialog dekhay, tai PDF ar print hubohu ek
+async function printFile(path) {
+  const url = URL.createObjectURL(await fetchPdfBlob(path));
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+  iframe.src = url;
+  iframe.onload = () => {
+    setTimeout(() => {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      } catch {
+        // iframe print block hole notun tab-e khule dey
+        window.open(url, '_blank');
+      }
+    }, 400);
+  };
+  document.body.appendChild(iframe);
+  setTimeout(() => {
+    iframe.remove();
+    URL.revokeObjectURL(url);
+  }, 120000);
 }
 
 const LAST_SYNC_KEY = 'lastSync';
@@ -79,73 +112,109 @@ const pad = (n) => String(n).padStart(2, '0');
 const todayDhaka = () => new Date().toLocaleDateString('en-CA', { timeZone: TZ }); // yyyy-mm-dd
 const fmtDate = (d) => (d ? String(d).slice(0, 10).split('-').reverse().join('-') : '-'); // dd-mm-yyyy
 const fmtTime = (d) =>
-  d ? new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: TZ }) : '—';
+  d ? new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: TZ }) : '-';
 const dayName = (dateStr) =>
   new Date(`${dateStr}T00:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', timeZone: 'UTC' });
 const fmtHM = (min) => `${pad(Math.floor((min || 0) / 60))}:${pad((min || 0) % 60)}`;
 
-const badge = {
-  Present: 'bg-green-100 text-green-700 ring-green-200',
-  Absent: 'bg-red-100 text-red-700 ring-red-200',
-  'Missing Out': 'bg-amber-100 text-amber-700 ring-amber-200',
-  Holiday: 'bg-purple-100 text-purple-700 ring-purple-200',
-  CL: 'bg-sky-100 text-sky-700 ring-sky-200',
-  SL: 'bg-sky-100 text-sky-700 ring-sky-200',
-  EL: 'bg-sky-100 text-sky-700 ring-sky-200',
-  Weekend: 'bg-slate-100 text-slate-500 ring-slate-200',
-  'Not Joined': 'bg-slate-100 text-slate-400 ring-slate-200',
-};
-
-const rowTone = {
-  Absent: 'bg-red-50/50',
-  'Missing Out': 'bg-amber-50/50',
-  Holiday: 'bg-purple-50/60',
-  Weekend: 'bg-slate-50',
-  'Not Joined': 'bg-slate-50/60 text-slate-400',
-};
-
-const th = 'border-b border-slate-200 px-2 py-3 font-semibold sm:px-4 print:px-1.5 print:py-1.5';
-const td = 'px-2 py-3 sm:px-4 print:px-1.5 print:py-1';
+/* ---------- shared classes ---------- */
+const focus = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700/40';
+const inputCls =
+  'rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-teal-700 focus:ring-2 focus:ring-teal-700/25';
+const btnSecondary = `rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60 ${focus}`;
+const linkBtn = `rounded text-sm font-medium text-teal-800 hover:underline disabled:opacity-60 ${focus}`;
+const th = 'px-4 py-2.5 font-medium whitespace-nowrap';
+const td = 'px-4 py-2.5 align-top';
 
 const fields = [
-  ['Emp ID', 'employeeId'],
-  ['Name', 'name'],
-  ['Join Date', 'joinDate'],
+  ['Join date', 'joinDate'],
   ['Grade', 'grade'],
   ['Line', 'line'],
   ['Designation', 'designation'],
   ['Department', 'department'],
   ['Section', 'section'],
-  ['Sub Section', 'subSection'],
-  ['Card No', 'cardNo'],
-  ['Device ID', 'proximityId'],
+  ['Sub section', 'subSection'],
+  ['Card no', 'cardNo'],
 ];
 
-function EmployeeInfo({ emp }) {
-  if (!emp) return null;
+// Month ruler: ek din = ekta tick. Rong shudhu status bujhate.
+const tickTone = (status) => {
+  switch (status) {
+    case 'Present':
+      return 'bg-teal-800';
+    case 'Missing Out':
+      return 'bg-red-700/50';
+    case 'Absent':
+      return 'bg-red-700';
+    case 'CL':
+    case 'SL':
+    case 'EL':
+      return 'bg-zinc-500';
+    case 'Holiday':
+    case 'Weekend':
+      return 'bg-zinc-300';
+    default:
+      return 'border border-zinc-200 bg-white'; // future / not joined
+  }
+};
+
+const legend = [
+  ['Present', 'bg-teal-800'],
+  ['Missing out', 'bg-red-700/50'],
+  ['Absent', 'bg-red-700'],
+  ['Leave', 'bg-zinc-500'],
+  ['Holiday or weekend', 'bg-zinc-300'],
+];
+
+function MonthRuler({ days, summary }) {
+  const last = days.length;
   return (
-    <div className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:grid-cols-3 md:grid-cols-6 print:grid-cols-6 print:shadow-none">
-      {fields.map(([label, key]) => (
-        <div key={key} className="min-w-0">
-          <div className="text-[10px] font-medium uppercase tracking-wide text-slate-400">{label}</div>
-          <div
-            className={`truncate text-xs ${key === 'proximityId' ? 'font-semibold text-blue-700' : 'text-slate-700'}`}
-          >
-            {key === 'joinDate' ? fmtDate(emp.joinDate) : emp[key] || '-'}
-          </div>
+    <div>
+      <div
+        role="img"
+        aria-label={`Month overview: ${summary.presentDays} present, ${summary.absent} absent, ${summary.missingOut} missing out, ${summary.holidayTotal} holiday or weekend, ${summary.leave} on leave`}
+      >
+        <div className="flex gap-px" aria-hidden="true">
+          {days.map((d) => (
+            <div
+              key={d.date}
+              title={`${fmtDate(d.date)}: ${d.status ? (d.status === 'Missing Out' ? 'Missing out' : d.status) : 'No record'}`}
+              className={`h-6 flex-1 ${tickTone(d.status)}`}
+            />
+          ))}
         </div>
-      ))}
+        <div className="mt-1 flex gap-px text-xs text-zinc-500 tabular-nums" aria-hidden="true">
+          {days.map((d, i) => {
+            const n = i + 1;
+            const show = n === 1 || n % 5 === 0 || n === last;
+            return (
+              <div key={d.date} className="flex-1 whitespace-nowrap text-center">
+                {show ? n : ''}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-zinc-500">
+        {legend.map(([label, tone]) => (
+          <span key={label} className="inline-flex items-center gap-1.5">
+            <span className={`inline-block h-3 w-3 ${tone}`} />
+            {label}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
 
-// Ekjon employee-er mashik hajira + summary table + PDF download + print.
+// Ekjon employee-er mashik hajira + summary + PDF download + print.
 function MonthlyView({ id }) {
   const [month, setMonth] = useState(todayDhaka().slice(0, 7));
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
   const [loading, setLoading] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [printBusy, setPrintBusy] = useState(false);
   const [tick, setTick] = useState(0); // sync hole data reload korar jonno
 
   useEffect(() => {
@@ -189,210 +258,207 @@ function MonthlyView({ id }) {
     }
   };
 
-  // Direct browser print dialog open kore
-  const printPage = () => {
+  // PDF-er hubohu ek print: server-er PDF diye print dialog open hoy
+  const printPage = async () => {
     if (!emp) return;
-    const prev = document.title;
-    document.title = `Attendance_${emp.employeeId}_${month}`;
-    const restore = () => {
-      document.title = prev;
-      window.removeEventListener('afterprint', restore);
-    };
-    window.addEventListener('afterprint', restore);
-    window.print();
+    setPrintBusy(true);
+    setErr(null);
+    try {
+      await printFile(`/api/employees/${id}/monthly-pdf?month=${month}`);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setPrintBusy(false);
+    }
   };
 
-  const stats = s
+  const num = (n) => Number(Number(n || 0).toFixed(2));
+  const otHours = s ? num(s.otHours) : 0;
+  // General hours = regular working hours (OT bad)
+  const generalHours = data ? num(data.days.reduce((a, d) => a + (d.regularMinutes || 0), 0) / 60) : 0;
+  const strong = 'text-zinc-900';
+  const cells = s
     ? [
-      ['Present', s.presentDays, 'text-green-700 bg-green-50 border-green-200'],
-      ['Absent', s.absent, 'text-red-700 bg-red-50 border-red-200'],
-      ['Missing Out', s.missingOut, 'text-amber-700 bg-amber-50 border-amber-200'],
-      ['Holiday', s.holidayTotal, 'text-purple-700 bg-purple-50 border-purple-200'],
-      ['CL', s.cl, 'text-sky-700 bg-sky-50 border-sky-200'],
-      ['SL', s.sl, 'text-sky-700 bg-sky-50 border-sky-200'],
-      ['EL', s.el, 'text-sky-700 bg-sky-50 border-sky-200'],
-      ['OT Hours', s.otHours, 'text-slate-700 bg-slate-50 border-slate-200'],
-      ['Total Hours', s.totalHours, 'text-slate-700 bg-slate-50 border-slate-200'],
-    ]
+        ['Present', s.presentDays, strong],
+        ['Absent', s.absent, s.absent > 0 ? 'text-red-700' : strong],
+        ['Missing out', s.missingOut, s.missingOut > 0 ? 'text-red-700' : strong],
+        ['CL', s.cl, strong],
+        ['SL', s.sl, strong],
+        ['EL', s.el, strong],
+        ['OT hours', otHours, 'text-teal-800'],
+        ['General hours', generalHours, strong],
+      ]
     : [];
 
   return (
     <>
-      {/* Print-er shomoy page setup */}
-      <style>{`
-        @media print {
-          @page { size: A4; margin: 10mm; }
-          html, body { background: #fff !important; }
-          * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        }
-      `}</style>
+      <div className="mb-5">
+        <h2 className="text-2xl font-semibold text-zinc-900">{emp ? emp.name : 'Employee attendance'}</h2>
+        <p className="mt-1 text-sm text-zinc-500 tabular-nums">
+          {emp ? `Employee ID ${emp.employeeId}, device ID ${emp.proximityId}` : loading ? 'Loading' : ''}
+        </p>
+      </div>
 
       {err && (
-        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 print:hidden">
+        <div
+          role="alert"
+          className="mb-4 rounded-md border border-l-4 border-zinc-300 border-l-red-700 bg-white px-4 py-3 text-sm text-red-700"
+        >
           {err}
         </div>
       )}
 
-      {/* Sudhu print-e dekhabe */}
-      {emp && (
-        <div className="mb-2 hidden print:block">
-          <div className="text-base font-bold text-slate-900">Monthly Attendance Report</div>
-          <div className="text-xs text-slate-600">
-            {emp.name} ({emp.employeeId}) — {month}
+      <div className="overflow-hidden rounded-md border border-zinc-300 bg-white">
+        {/* Employee details (compact) */}
+        {emp && (
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-2 px-4 py-3 sm:grid-cols-4">
+            {fields.map(([label, key]) => (
+              <div key={key} className="min-w-0">
+                <dt className="text-xs text-zinc-500">{label}</dt>
+                <dd className="truncate text-sm text-zinc-900 tabular-nums">
+                  {key === 'joinDate' ? fmtDate(emp.joinDate) : emp[key] || '-'}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        )}
+
+        {/* Month controls */}
+        <div className="flex flex-wrap items-center gap-3 border-t border-zinc-200 px-4 py-3">
+          <label className="flex items-center gap-2 text-sm text-zinc-700">
+            Month
+            <input
+              type="month"
+              value={month}
+              onChange={(e) => e.target.value && setMonth(e.target.value)}
+              className={inputCls}
+            />
+          </label>
+          <button onClick={pdf} disabled={!emp || pdfBusy} className={`${btnSecondary} flex items-center gap-2`}>
+            {pdfBusy ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Download className="h-4 w-4" />}
+            {pdfBusy ? 'Preparing PDF' : 'Download PDF'}
+          </button>
+          <button onClick={printPage} disabled={!emp || printBusy} className={`${btnSecondary} flex items-center gap-2`}>
+            {printBusy ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Printer className="h-4 w-4" />}
+            {printBusy ? 'Preparing print' : 'Print'}
+          </button>
+          <span className="text-sm text-zinc-500">Times are in Bangladesh time.</span>
+          {loading && <span className="text-sm text-zinc-500">Loading</span>}
+        </div>
+
+        {/* Monthly summary: one ruled strip */}
+        {s && (
+          <div className="border-t border-zinc-200 px-4 py-3">
+            <div
+              role="group"
+              aria-label="Monthly summary"
+              className="grid grid-cols-4 gap-px border border-zinc-300 bg-zinc-200 lg:grid-cols-8"
+            >
+              {cells.map(([label, value, tone]) => (
+                <div key={label} className="bg-white px-3 py-2">
+                  <div className="text-xs text-zinc-500">{label}</div>
+                  <div className={`text-xl font-semibold tabular-nums ${tone}`}>{value}</div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-2 text-sm text-zinc-500 tabular-nums">
+              Present includes {s.missingOut} day{s.missingOut === 1 ? '' : 's'} with a missing check-out. Holiday and weekend: {s.holidayTotal} days.
+              General hours exclude overtime. Total hours with overtime: {num(s.totalHours)}.
+            </p>
           </div>
-        </div>
-      )}
+        )}
 
-      {emp && (
-        <div className="mb-3">
-          <div className="mb-2 text-sm font-semibold text-slate-800 print:hidden">{emp.name}</div>
-          <EmployeeInfo emp={emp} />
-        </div>
-      )}
+        {/* Month ruler */}
+        {s && (
+          <div className="border-t border-zinc-200 px-4 py-3">
+            <MonthRuler days={data.days} summary={s} />
+          </div>
+        )}
 
-      <div className="mb-3 flex flex-wrap items-center gap-3 print:hidden">
-        <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-          Month
-          <input
-            type="month"
-            value={month}
-            onChange={(e) => e.target.value && setMonth(e.target.value)}
-            className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-          />
-        </label>
-
-        <button
-          onClick={pdf}
-          disabled={!emp || pdfBusy}
-          title="Download PDF"
-          aria-label="Download PDF"
-          className="icon-btn"
-        >
-          {pdfBusy ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
-        </button>
-
-        <button
-          onClick={printPage}
-          disabled={!emp}
-          title="Print"
-          aria-label="Print"
-          className="icon-btn"
-        >
-          <Printer size={18} />
-        </button>
-
-        {loading && <span className="text-xs text-slate-500">Loading...</span>}
-      </div>
-
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start print:flex-row print:items-start">
-        {/* Main attendance table */}
-        <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm print:shadow-none">
-          <div className="max-h-[calc(100vh-300px)] min-h-[420px] overflow-y-auto overflow-x-auto print:max-h-none print:min-h-0 print:overflow-visible">
-            <table className="w-full min-w-[640px] table-fixed text-left text-xs sm:text-sm print:min-w-0 print:text-[10px]">
-              <colgroup>
-                <col className="w-[13%]" />
-                <col className="w-[7%]" />
-                <col className="w-[12%]" />
-                <col className="w-[12%]" />
-                <col className="w-[9%]" />
-                <col className="w-[13%]" />
-                <col className="w-[8%]" />
-                <col className="w-[26%]" />
-              </colgroup>
-              <thead className="sticky top-0 z-10 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500 sm:text-xs print:static">
-                <tr>
-                  {['Date', 'Day', 'In Time', 'Out Time', 'Hours', 'OT Hours', 'Punches', 'Status'].map((h) => (
-                    <th key={h} className={th}>
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {data?.days.map((d) => {
-                  const otFinal = d.otFinalMinutes;
-                  const otActual = d.otActualMinutes;
-                  return (
-                    <tr
-                      key={d.date}
-                      className={`transition hover:bg-blue-50 print:break-inside-avoid ${rowTone[d.status] || (d.isWeekend ? 'bg-slate-50' : '')}`}
-                    >
-                      <td className={`${td} font-medium text-slate-800`}>{fmtDate(d.date)}</td>
-                      <td className={`${td} ${d.isWeekend ? 'font-semibold text-slate-500' : 'text-slate-600'}`}>{dayName(d.date)}</td>
-                      <td className={td}>{fmtTime(d.inTime)}</td>
-                      <td className={td}>{fmtTime(d.outTime)}</td>
-                      <td className={td}>{d.hours ?? '—'}</td>
-                      <td className={td}>
-                        {d.status === 'Present' ? (
-                          <>
-                            <div className="font-medium">{fmtHM(otFinal)}</div>
-                            {otActual > 0 && otActual !== otFinal && (
-                              <div className="text-[10px] text-slate-400">actual {fmtHM(otActual)}</div>
-                            )}
-                          </>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                      <td className={td}>{d.punches || '—'}</td>
-                      <td className={td}>
-                        {d.status ? (
-                          <>
-                            <span
-                              className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset sm:px-2.5 sm:text-xs ${badge[d.status]}`}
-                            >
-                              {d.status === 'Missing Out' ? 'Missing out' : d.status}
-                            </span>
-                            {d.holidayName && (
-                              <div className="mt-0.5 truncate text-[10px] text-slate-500">
-                                {d.holidayName}
-                                {d.status !== 'Holiday' ? ' • duty' : ''}
-                              </div>
-                            )}
-                          </>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-                {data && !data.days.length && (
-                  <tr>
-                    <td colSpan={8} className="px-3 py-16 text-center text-sm text-slate-400">
-                      No data.
+        {/* Daily table */}
+        <div className="overflow-x-auto border-t border-zinc-300">
+          <table className="w-full min-w-[640px] text-left text-sm">
+            <thead className="border-b border-zinc-300 bg-zinc-50 text-zinc-500">
+              <tr>
+                {['Date', 'Day', 'In', 'Out', 'Hours', 'Overtime', 'Punches', 'Status'].map((h) => (
+                  <th key={h} className={th}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-200">
+              {data?.days.map((d) => {
+                const quiet = d.status === 'Holiday' || d.status === 'Weekend' || d.status === 'Not Joined';
+                const bad = d.status === 'Absent' || d.status === 'Missing Out';
+                return (
+                  <tr key={d.date} className={`tabular-nums ${quiet ? 'bg-zinc-50 text-zinc-500' : 'text-zinc-800'}`}>
+                    <td className={`${td} font-medium`}>{fmtDate(d.date)}</td>
+                    <td className={td}>{dayName(d.date)}</td>
+                    <td className={td}>{fmtTime(d.inTime)}</td>
+                    <td className={td}>{fmtTime(d.outTime)}</td>
+                    <td className={td}>{d.hours ?? '-'}</td>
+                    <td className={td}>
+                      {d.status === 'Present' ? (
+                        <>
+                          <div className="font-medium">{fmtHM(d.otFinalMinutes)}</div>
+                          {d.otActualMinutes > 0 && d.otActualMinutes !== d.otFinalMinutes && (
+                            <div className="text-xs text-zinc-500">actual {fmtHM(d.otActualMinutes)}</div>
+                          )}
+                        </>
+                      ) : (
+                        '-'
+                      )}
+                    </td>
+                    <td className={td}>{d.punches || '-'}</td>
+                    <td className={td}>
+                      {d.status ? (
+                        <>
+                          <span className={bad ? 'font-medium text-red-700' : 'font-medium'}>
+                            {d.status === 'Missing Out' ? 'Missing out' : d.status}
+                          </span>
+                          {d.holidayName && (
+                            <div className="truncate text-xs text-zinc-500">
+                              {d.holidayName}
+                              {d.status !== 'Holiday' ? ' (duty)' : ''}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        '-'
+                      )}
                     </td>
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                );
+              })}
+              {data && !data.days.length && (
+                <tr>
+                  <td colSpan={8} className="px-4 py-12 text-center text-sm text-zinc-500">
+                    No attendance data for this month.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+            {s && (
+              <tfoot className="border-t border-zinc-300 bg-zinc-50 text-zinc-900 tabular-nums">
+                <tr>
+                  <td colSpan={4} className={`${td} font-semibold`}>
+                    Total
+                  </td>
+                  <td className={`${td} font-semibold`}>
+                    {num(s.totalHours)}
+                    <span className="block text-xs font-normal text-zinc-500">total hours</span>
+                  </td>
+                  <td className={`${td} font-semibold text-teal-800`}>
+                    {fmtHM(s.otFinalMinutes)}
+                    <span className="block text-xs font-normal text-zinc-500">total overtime</span>
+                  </td>
+                  <td colSpan={2} className={td} />
+                </tr>
+              </tfoot>
+            )}
+          </table>
         </div>
-
-        {/* Side summary table */}
-        {s && (
-          <aside className="w-full shrink-0 lg:sticky lg:top-0 lg:w-56 print:static print:w-44">
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm print:shadow-none">
-              <table className="w-full text-left text-xs sm:text-sm print:text-[10px]">
-                <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500 sm:text-xs">
-                  <tr>
-                    <th colSpan={2} className={th}>
-                      Summary
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {stats.map(([label, val, tone]) => (
-                    <tr key={label}>
-                      <td className={`${td} py-2 text-slate-600`}>{label}</td>
-                      <td className={`${td} py-2 text-right font-semibold ${tone.split(' ')[0]}`}>{val ?? 0}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </aside>
-        )}
       </div>
     </>
   );
@@ -466,85 +532,70 @@ export default function EmployeeDetail() {
   if (!ready) return null;
 
   return (
-    <div className="flex h-screen bg-slate-100 text-slate-800 print:block print:h-auto print:bg-white">
-      {/* `contents` thakle layout bhange na; print-e puro sidebar hide hoy */}
-      <div className="contents print:hidden">
-        <SideNavBar
-          collapsed={collapsed}
-          onToggle={() => setCollapsed((c) => !c)}
-          mobileOpen={mobileOpen}
-          onClose={() => setMobileOpen(false)}
-          onLogout={logout}
-        />
-      </div>
+    <div className={`flex h-screen bg-zinc-100 text-zinc-900 ${plex.className}`}>
+      <SideNavBar
+        collapsed={collapsed}
+        onToggle={() => setCollapsed((c) => !c)}
+        mobileOpen={mobileOpen}
+        onClose={() => setMobileOpen(false)}
+        onLogout={logout}
+      />
 
-      <div className="flex min-w-0 flex-1 flex-col print:block">
-        <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 shadow-sm md:px-6 print:hidden">
-          <div className="flex min-w-0 items-center gap-3">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-zinc-300 bg-white px-4 md:px-6">
+          <div className="flex min-w-0 items-center gap-2">
             <button
               onClick={() => setMobileOpen(true)}
-              className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 md:hidden"
+              className={`rounded-md p-1.5 text-zinc-600 hover:bg-zinc-100 md:hidden ${focus}`}
               aria-label="Open menu"
             >
               <Menu className="h-5 w-5" />
             </button>
             <button
               onClick={() => setCollapsed((c) => !c)}
-              className="hidden rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 md:block"
-              title="Toggle sidebar"
+              className={`hidden rounded-md p-1.5 text-zinc-600 hover:bg-zinc-100 md:block ${focus}`}
               aria-label="Toggle sidebar"
+              title="Toggle sidebar"
             >
               <Menu className="h-5 w-5" />
             </button>
-            <h1 className="truncate text-base font-semibold text-slate-800">Employee Attendance</h1>
+            <h1 className="truncate text-sm font-semibold text-zinc-900">Attendance</h1>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-3">
             <DeviceStatus />
-            <div className="hidden text-right leading-tight sm:block">
-              <div className="text-[10px] uppercase tracking-wide text-slate-400">Last synced</div>
-              <div className="text-xs font-medium text-slate-600">{fmtSyncTime(lastSync) || 'Not yet'}</div>
-            </div>
-
-            <button
-              onClick={() => sync(false)}
-              disabled={syncing}
-              title="Sync from Device"
-              className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60"
-            >
-              <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">{syncing ? 'Syncing...' : 'Sync'}</span>
+            <span className="hidden text-sm text-zinc-500 tabular-nums sm:inline">
+              Last synced {fmtSyncTime(lastSync) || 'not yet'}
+            </span>
+            <button onClick={() => sync(false)} disabled={syncing} className={`${btnSecondary} flex items-center gap-2 py-1.5`}>
+              <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin motion-reduce:animate-none' : ''}`} />
+              {syncing ? 'Syncing' : 'Sync'}
             </button>
-
-            <button
-              onClick={logout}
-              className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-500 hover:text-white"
-            >
-              <LogOut className="h-4 w-4" />
-              <span className="hidden sm:inline">Logout</span>
+            <button onClick={logout} className={linkBtn}>
+              Log out
             </button>
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto p-4 md:p-6 print:overflow-visible print:p-0">
-          <button
-            onClick={() => router.push('/employees')}
-            className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-800 print:hidden"
-          >
-            <span>←</span> Back to Employee List
-          </button>
-          <MonthlyView id={id} />
+        <main className="flex-1 overflow-auto p-4 md:p-8">
+          <div className="max-w-4xl">
+            <Link href="/employees" className={`mb-4 inline-block ${linkBtn}`}>
+              Back to employees
+            </Link>
+            <MonthlyView id={id} />
+          </div>
         </main>
       </div>
 
       {/* Toast */}
       {toast && (
         <div
-          className={`fixed bottom-4 right-4 z-50 flex max-w-sm items-start gap-2 rounded-lg border px-4 py-3 text-sm shadow-lg print:hidden ${toast.err ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700'
-            }`}
+          role="status"
+          className={`fixed bottom-4 right-4 z-50 max-w-sm rounded-md bg-zinc-900 px-4 py-2.5 text-sm text-white ${
+            toast.err ? 'border-l-4 border-red-500' : ''
+          }`}
         >
-          {toast.err ? <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> : <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />}
-          <span>{toast.text}</span>
+          {toast.text}
         </div>
       )}
     </div>
