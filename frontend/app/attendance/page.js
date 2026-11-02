@@ -1,6 +1,4 @@
 // frontend/app/attendance/page.js
-// Attendance register: search by Employee ID / Proximity ID / Name, filter by date range,
-// edit check-in / check-out inline (overtime recalculates), then PDF or print.
 
 'use client';
 
@@ -121,13 +119,13 @@ const rowKey = (r) => `${r.date}|${r.employee}`;
 
 /* ---------- shared classes ---------- */
 const focusRing = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700/40';
+// compact input (filters)
 const inputCls =
-  'rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-teal-700 focus:ring-2 focus:ring-teal-700/25';
-const btnPrimary = `rounded-md bg-teal-800 px-4 py-2 text-sm font-medium text-white hover:bg-teal-900 disabled:opacity-60 ${focusRing}`;
-const btnSecondary = `rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60 ${focusRing}`;
+  'rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-[13px] text-zinc-900 outline-none focus:border-teal-700 focus:ring-2 focus:ring-teal-700/25';
+const btnSecondary = `rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-[13px] font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60 ${focusRing}`;
 const linkBtn = `rounded text-sm font-medium text-teal-800 hover:underline disabled:opacity-60 ${focusRing}`;
-const th = 'px-3 py-2.5 font-medium whitespace-nowrap';
-const td = 'px-3 py-2 align-middle whitespace-nowrap tabular-nums';
+const th = 'px-2 py-2 font-medium whitespace-nowrap';
+const td = 'px-2 py-1.5 align-middle whitespace-nowrap tabular-nums';
 
 const statusTone = (status) => {
   if (status === 'Present') return 'font-medium text-teal-800';
@@ -196,24 +194,24 @@ function EmployeeSearch({ onSelect }) {
   };
 
   return (
-    <div ref={box} className="w-full sm:w-80">
-      <label htmlFor="reg-search" className="mb-1 block text-sm font-medium text-zinc-700">
+    <div ref={box} className="w-full sm:w-60">
+      <label htmlFor="reg-search" className="mb-1 block text-xs font-medium text-zinc-700">
         Search employee
       </label>
       <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" />
         <input
           id="reg-search"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
-          placeholder="Employee ID, proximity ID or name"
+          placeholder="Employee ID, device ID or name"
           autoComplete="off"
-          className={`${inputCls} w-full pl-9`}
+          className={`${inputCls} w-full pl-8`}
         />
         {open && q.trim() && (
-          <div className="absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-md border border-zinc-300 bg-white shadow-md">
+          <div className="absolute z-20 mt-1 max-h-72 w-72 overflow-auto rounded-md border border-zinc-300 bg-white shadow-md">
             {busy && <div className="px-3 py-2 text-sm text-zinc-500">Searching</div>}
             {!busy && !results.length && <div className="px-3 py-2 text-sm text-zinc-500">No employee found.</div>}
             {results.map((e) => (
@@ -451,7 +449,7 @@ export default function AttendanceRegisterPage() {
 
           <div className="flex shrink-0 items-center gap-3">
             <DeviceStatus />
-            <button onClick={sync} disabled={syncing} className={`${btnSecondary} flex items-center gap-2 py-1.5`}>
+            <button onClick={sync} disabled={syncing} className={`${btnSecondary} flex items-center gap-2`}>
               <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin motion-reduce:animate-none' : ''}`} />
               {syncing ? 'Syncing' : 'Sync'}
             </button>
@@ -461,44 +459,36 @@ export default function AttendanceRegisterPage() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto p-4 md:p-8">
-          <div className="mx-auto max-w-[1500px]">
-            <div className="mb-5">
-              <h2 className="text-2xl font-semibold text-zinc-900">Search, filter and fix attendance</h2>
-              <p className="mt-1 text-sm text-zinc-500">
-                Search by Employee ID, proximity ID or name, pick a date or a range, then edit check-in and check-out.
-                Overtime is recalculated from the edited times using the office hours and rounding threshold in Settings.
-              </p>
-            </div>
-
+        <main className="flex-1 overflow-auto p-3 md:p-4">
+          <div className="w-full">
             {/* Filters */}
-            <div className="rounded-md border border-zinc-300 bg-white px-4 py-4">
-              <div className="flex flex-wrap items-end gap-4">
+            <div className="rounded-md border border-zinc-300 bg-white px-3 py-3">
+              <div className="flex flex-wrap items-end gap-3">
                 <EmployeeSearch key={searchKey} onSelect={pickEmp} />
 
                 <label className="block">
-                  <span className="mb-1 block text-sm font-medium text-zinc-700">From</span>
+                  <span className="mb-1 block text-xs font-medium text-zinc-700">From</span>
                   <input
                     type="date"
                     value={from}
                     max={to || undefined}
                     onChange={(e) => setFromDate(e.target.value)}
-                    className={inputCls}
+                    className={`${inputCls} w-36`}
                   />
                 </label>
 
                 <label className="block">
-                  <span className="mb-1 block text-sm font-medium text-zinc-700">To</span>
+                  <span className="mb-1 block text-xs font-medium text-zinc-700">To</span>
                   <input
                     type="date"
                     value={to}
                     min={from || undefined}
                     onChange={(e) => setToDate(e.target.value)}
-                    className={inputCls}
+                    className={`${inputCls} w-36`}
                   />
                 </label>
 
-                <label className="flex items-center gap-2 pb-2 text-sm text-zinc-700">
+                <label className="flex items-center gap-2 pb-1.5 text-[13px] text-zinc-700">
                   <input
                     type="checkbox"
                     checked={showEmpty}
@@ -508,7 +498,7 @@ export default function AttendanceRegisterPage() {
                   Include days with no punch
                 </label>
 
-                <div className="ml-auto flex items-center gap-3 pb-0.5">
+                <div className="ml-auto flex items-center gap-2">
                   <button onClick={pdf} disabled={pdfBusy || !rows.length} className={`${btnSecondary} flex items-center gap-2`}>
                     {pdfBusy ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Download className="h-4 w-4" />}
                     {pdfBusy ? 'Preparing PDF' : 'Download PDF'}
@@ -540,15 +530,15 @@ export default function AttendanceRegisterPage() {
             {err && (
               <div
                 role="alert"
-                className="mt-4 rounded-md border border-l-4 border-zinc-300 border-l-red-700 bg-white px-4 py-3 text-sm text-red-700"
+                className="mt-3 rounded-md border border-l-4 border-zinc-300 border-l-red-700 bg-white px-4 py-3 text-sm text-red-700"
               >
                 {err}
               </div>
             )}
 
             {/* Rows */}
-            <div className="mt-4 overflow-hidden rounded-md border border-zinc-300 bg-white">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3">
+            <div className="mt-3 overflow-hidden rounded-md border border-zinc-300 bg-white">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-3 py-2.5">
                 <p className="text-sm font-medium text-zinc-900">
                   {fmtDate(from)}
                   {from === to ? '' : ` to ${fmtDate(to)}`}
@@ -556,11 +546,10 @@ export default function AttendanceRegisterPage() {
                     {loading ? 'Loading' : `${s ? s.rows : 0} row${s && s.rows === 1 ? '' : 's'}`}
                   </span>
                 </p>
-                <p className="text-sm text-zinc-500">Times are in Bangladesh time. PDF and print include your edits.</p>
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1080px] text-left text-sm">
+                <table className="w-full text-left text-[13px]">
                   <thead className="border-b border-zinc-300 bg-zinc-50 text-zinc-500">
                     <tr>
                       {['Date', 'Emp ID', 'Device ID', 'Name', 'Check-in', 'Check-out', 'Hours', 'Punches', 'OT', 'Status'].map((h) => (
@@ -582,7 +571,7 @@ export default function AttendanceRegisterPage() {
                           <td className={`${td} font-medium`}>{fmtDate(r.date)}</td>
                           <td className={td}>{r.employeeId}</td>
                           <td className={td}>{r.proximityId}</td>
-                          <td className={`${td} max-w-[240px] truncate`} title={r.name}>
+                          <td className={`${td} max-w-[180px] truncate`} title={r.name}>
                             {r.name}
                             {r.edited && <span className="ml-2 text-xs font-medium text-teal-800">edited</span>}
                           </td>
@@ -593,7 +582,7 @@ export default function AttendanceRegisterPage() {
                                 value={editing.inTime}
                                 onChange={(e) => setEditing((x) => ({ ...x, inTime: e.target.value }))}
                                 aria-label={`Check-in for ${r.name} on ${fmtDate(r.date)}`}
-                                className={`${inputCls} w-[7.5rem] px-2 py-1`}
+                                className={`${inputCls} w-28 px-2 py-1`}
                               />
                             ) : (
                               fmtTime(r.inTime)
@@ -606,7 +595,7 @@ export default function AttendanceRegisterPage() {
                                 value={editing.outTime}
                                 onChange={(e) => setEditing((x) => ({ ...x, outTime: e.target.value }))}
                                 aria-label={`Check-out for ${r.name} on ${fmtDate(r.date)}`}
-                                className={`${inputCls} w-[7.5rem] px-2 py-1`}
+                                className={`${inputCls} w-28 px-2 py-1`}
                               />
                             ) : (
                               fmtTime(r.outTime)
@@ -633,7 +622,7 @@ export default function AttendanceRegisterPage() {
                                   disabled={saving}
                                   title="Save check-in and check-out"
                                   aria-label={`Save ${r.name} on ${fmtDate(r.date)}`}
-                                  className={`rounded-md p-1.5 text-teal-800 hover:bg-teal-50 disabled:opacity-50 ${focusRing}`}
+                                  className={`rounded-md p-1 text-teal-800 hover:bg-teal-50 disabled:opacity-50 ${focusRing}`}
                                 >
                                   {saving ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Check className="h-4 w-4" />}
                                 </button>
@@ -643,7 +632,7 @@ export default function AttendanceRegisterPage() {
                                   disabled={saving}
                                   title="Cancel"
                                   aria-label="Cancel editing"
-                                  className={`rounded-md p-1.5 text-zinc-500 hover:bg-zinc-100 disabled:opacity-50 ${focusRing}`}
+                                  className={`rounded-md p-1 text-zinc-500 hover:bg-zinc-100 disabled:opacity-50 ${focusRing}`}
                                 >
                                   <X className="h-4 w-4" />
                                 </button>
@@ -654,7 +643,7 @@ export default function AttendanceRegisterPage() {
                                 onClick={() => startEdit(r)}
                                 title="Edit check-in and check-out"
                                 aria-label={`Edit ${r.name} on ${fmtDate(r.date)}`}
-                                className={`rounded-md p-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-teal-800 ${focusRing}`}
+                                className={`rounded-md p-1 text-zinc-500 hover:bg-zinc-100 hover:text-teal-800 ${focusRing}`}
                               >
                                 <Pencil className="h-4 w-4" />
                               </button>
@@ -666,9 +655,8 @@ export default function AttendanceRegisterPage() {
 
                     {data && !rows.length && (
                       <tr>
-                        <td colSpan={11} className="px-4 py-14 text-center text-sm text-zinc-500">
+                        <td colSpan={11} className="px-4 py-12 text-center text-sm text-zinc-500">
                           No attendance rows for these filters.
-                          {!showEmpty && ' Days without any device punch are hidden — tick “Include days with no punch” to see them.'}
                         </td>
                       </tr>
                     )}
@@ -691,10 +679,9 @@ export default function AttendanceRegisterPage() {
               </div>
 
               {s && rows.length > 0 && (
-                <p className="border-t border-zinc-200 px-4 py-3 text-sm text-zinc-500">
+                <p className="border-t border-zinc-200 px-3 py-2.5 text-sm text-zinc-500">
                   Present {s.presentDays} · Missing out {s.missingOut} · Absent {s.absent} · Leave {s.leave} · Holiday{' '}
-                  {s.holiday} · Weekend {s.weekend}. Total overtime {fmtHM(s.otFinalMinutes)}.{' '}
-                  Edit a check-in or check-out to recalculate overtime automatically.
+                  {s.holiday} · Weekend {s.weekend}. Total overtime {fmtHM(s.otFinalMinutes)}.
                 </p>
               )}
             </div>

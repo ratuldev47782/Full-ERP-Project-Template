@@ -1,15 +1,24 @@
-// frontend/app/reports/page.js
+// frontend/app/attendance/page.js
 
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Search, Menu, RefreshCw } from 'lucide-react';
+import {
+  Search,
+  Menu,
+  RefreshCw,
+  Download,
+  Printer,
+  Pencil,
+  Check,
+  X,
+  Loader2,
+} from 'lucide-react';
 import { IBM_Plex_Sans } from 'next/font/google';
 import SideNavBar from '../components/SideNavBar';
 import DeviceStatus from '../components/DeviceStatus';
-import MonthlyView from '../components/MonthlyView';
-import { formatDateTime, useTimeFormat } from '../timeFormat';
+import { formatTime, useTimeFormat } from '../timeFormat';
 
 const plex = IBM_Plex_Sans({ subsets: ['latin'], weight: ['400', '500', '600'], display: 'swap' });
 
@@ -40,37 +49,99 @@ async function api(path, options = {}) {
   return data;
 }
 
-const LAST_SYNC_KEY = 'lastSync';
-const SYNC_EVENT = 'attendance:synced';
-
-async function runSync() {
-  const result = await api('/api/sync', { method: 'POST' });
-  const at = new Date().toISOString();
-  try {
-    localStorage.setItem(LAST_SYNC_KEY, at);
-  } catch { }
-  window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: { at, result } }));
-  return result;
+async function fetchPdfBlob(path) {
+  const res = await fetch(API + path, { headers: authHeader() });
+  if (res.status === 401) unauthorized();
+  if (!res.ok) {
+    let msg = 'PDF request failed';
+    try {
+      msg = (await res.json()).error || msg;
+    } catch {}
+    throw new Error(msg);
+  }
+  return res.blob();
 }
 
-const fmtSyncTime = (iso) => formatDateTime(iso);
+async function downloadFile(path, filename) {
+  const url = URL.createObjectURL(await fetchPdfBlob(path));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function printFile(path) {
+  const url = URL.createObjectURL(await fetchPdfBlob(path));
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+  iframe.src = url;
+  iframe.onload = () => {
+    setTimeout(() => {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      } catch {
+        window.open(url, '_blank');
+      }
+    }, 400);
+  };
+  document.body.appendChild(iframe);
+  setTimeout(() => {
+    iframe.remove();
+    URL.revokeObjectURL(url);
+  }, 120000);
+}
+
+/* ---------- formatting (Asia/Dhaka) ---------- */
+const TZ = 'Asia/Dhaka';
+const pad = (n) => String(n).padStart(2, '0');
+const todayDhaka = () => new Date().toLocaleDateString('en-CA', { timeZone: TZ });
+const fmtDate = (d) => (d ? String(d).slice(0, 10).split('-').reverse().join('-') : '-');
+const fmtTime = (d) => formatTime(d, { timeZone: TZ });
+const fmtHM = (min) => `${pad(Math.floor((min || 0) / 60))}:${pad((min || 0) % 60)}`;
+
+// ISO timestamp -> 'HH:MM' (Dhaka), khali hole khali
+const toHHMM = (value) => {
+  if (!value) return '';
+  const t = new Date(value).toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: TZ,
+  });
+  return /^\d{2}:\d{2}$/.test(t) ? t : '';
+};
+
+const rowKey = (r) => `${r.date}|${r.employee}`;
 
 /* ---------- shared classes ---------- */
-const focus = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700/40';
+const focusRing = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700/40';
+// compact input (filters)
 const inputCls =
-  'rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-teal-700 focus:ring-2 focus:ring-teal-700/25';
-const btnSecondary = `rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60 ${focus}`;
-const linkBtn = `rounded text-sm font-medium text-teal-800 hover:underline disabled:opacity-60 ${focus}`;
+  'rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-[13px] text-zinc-900 outline-none focus:border-teal-700 focus:ring-2 focus:ring-teal-700/25';
+const btnSecondary = `rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-[13px] font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60 ${focusRing}`;
+const linkBtn = `rounded text-sm font-medium text-teal-800 hover:underline disabled:opacity-60 ${focusRing}`;
+const th = 'px-2 py-2 font-medium whitespace-nowrap';
+const td = 'px-2 py-1.5 align-middle whitespace-nowrap tabular-nums';
 
-/* ---------- Search: Employee ID ar Proximity ID, alada alada input ---------- */
-function SearchBox({ by, label, placeholder, onSelect }) {
+const statusTone = (status) => {
+  if (status === 'Present') return 'font-medium text-teal-800';
+  if (status === 'Missing Out' || status === 'Absent') return 'font-medium text-red-700';
+  if (status === 'CL' || status === 'SL' || status === 'EL') return 'font-medium text-zinc-700';
+  return 'text-zinc-500';
+};
+
+/* ---------- search: Employee ID / Proximity ID / Name ---------- */
+function EmployeeSearch({ onSelect }) {
   const [q, setQ] = useState('');
   const [results, setResults] = useState([]);
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const seq = useRef(0);
   const box = useRef(null);
-  const inputId = `search-${by}`;
 
   useEffect(() => {
     const term = q.trim();
@@ -83,7 +154,7 @@ function SearchBox({ by, label, placeholder, onSelect }) {
     setBusy(true);
     const t = setTimeout(async () => {
       try {
-        const r = await api(`/api/employee-search?q=${encodeURIComponent(term)}&by=${by}`);
+        const r = await api(`/api/employee-search?q=${encodeURIComponent(term)}`);
         if (my === seq.current) {
           setResults(r);
           setOpen(true);
@@ -95,9 +166,8 @@ function SearchBox({ by, label, placeholder, onSelect }) {
       }
     }, 250);
     return () => clearTimeout(t);
-  }, [q, by]);
+  }, [q]);
 
-  // bairer jaygay click korle dropdown bondho
   useEffect(() => {
     const h = (e) => {
       if (box.current && !box.current.contains(e.target)) setOpen(false);
@@ -120,31 +190,28 @@ function SearchBox({ by, label, placeholder, onSelect }) {
     }
     if (e.key !== 'Enter') return;
     e.preventDefault();
-    const term = q.trim().toLowerCase();
-    const exact = results.find((r) => String(r[by] || '').toLowerCase() === term);
-    if (exact) pick(exact);
-    else if (results.length === 1) pick(results[0]);
+    if (results.length === 1) pick(results[0]);
   };
 
   return (
-    <div ref={box} className="w-full sm:w-72">
-      <label htmlFor={inputId} className="mb-1 block text-sm font-medium text-zinc-700">
-        {label}
+    <div ref={box} className="w-full sm:w-60">
+      <label htmlFor="reg-search" className="mb-1 block text-xs font-medium text-zinc-700">
+        Search employee
       </label>
       <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" />
         <input
-          id={inputId}
+          id="reg-search"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
-          placeholder={placeholder}
+          placeholder="Employee ID, device ID or name"
           autoComplete="off"
-          className={`${inputCls} w-full pl-9`}
+          className={`${inputCls} w-full pl-8`}
         />
         {open && q.trim() && (
-          <div className="absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-md border border-zinc-300 bg-white shadow-md">
+          <div className="absolute z-20 mt-1 max-h-72 w-72 overflow-auto rounded-md border border-zinc-300 bg-white shadow-md">
             {busy && <div className="px-3 py-2 text-sm text-zinc-500">Searching</div>}
             {!busy && !results.length && <div className="px-3 py-2 text-sm text-zinc-500">No employee found.</div>}
             {results.map((e) => (
@@ -155,18 +222,10 @@ function SearchBox({ by, label, placeholder, onSelect }) {
                 className="flex w-full items-center justify-between gap-3 border-b border-zinc-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-zinc-50"
               >
                 <span className="min-w-0 truncate tabular-nums">
-                  <span className={by === 'employeeId' ? 'font-semibold text-teal-800' : 'font-medium text-zinc-800'}>
-                    {e.employeeId}
-                  </span>
+                  <span className="font-semibold text-teal-800">{e.employeeId}</span>
                   <span className="ml-2 text-zinc-600">{e.name}</span>
                 </span>
-                <span
-                  className={`shrink-0 text-xs tabular-nums ${
-                    by === 'proximityId' ? 'font-semibold text-teal-800' : 'text-zinc-500'
-                  }`}
-                >
-                  Device {e.proximityId}
-                </span>
+                <span className="shrink-0 text-xs text-zinc-500 tabular-nums">Device {e.proximityId}</span>
               </button>
             ))}
           </div>
@@ -176,27 +235,36 @@ function SearchBox({ by, label, placeholder, onSelect }) {
   );
 }
 
-export default function ReportsPage() {
-  useTimeFormat();
+export default function AttendanceRegisterPage() {
+  const [timeFormat] = useTimeFormat();
   const router = useRouter();
   const path = usePathname();
-
-  const [emp, setEmp] = useState(null);
-  const [searchKey, setSearchKey] = useState(0); // employee select hole duto input-i clear hoy
 
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [ready, setReady] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  const [emp, setEmp] = useState(null);
+  const [searchKey, setSearchKey] = useState(0);
+  const [from, setFrom] = useState(todayDhaka);
+  const [to, setTo] = useState(todayDhaka);
+  const [showEmpty, setShowEmpty] = useState(false);
+
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [lastSync, setLastSync] = useState(null);
-  const [toast, setToast] = useState(null); // { err, text }
+  const [err, setErr] = useState(null);
+
+  const seq = useRef(0);
+  const [editing, setEditing] = useState(null); // { key, inTime, outTime }
+  const [savingKey, setSavingKey] = useState(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [printBusy, setPrintBusy] = useState(false);
 
   useEffect(() => {
     if (!localStorage.getItem('token')) router.replace('/login');
-    else {
-      setReady(true);
-      setLastSync(localStorage.getItem(LAST_SYNC_KEY));
-    }
+    else setReady(true);
   }, [router]);
 
   useEffect(() => {
@@ -204,33 +272,137 @@ export default function ReportsPage() {
   }, [path]);
 
   useEffect(() => {
-    const h = (e) => setLastSync(e.detail?.at || localStorage.getItem(LAST_SYNC_KEY));
-    window.addEventListener(SYNC_EVENT, h);
-    return () => window.removeEventListener(SYNC_EVENT, h);
-  }, []);
-
-  useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 4000);
     return () => clearTimeout(t);
   }, [toast]);
 
-  const sync = async (silent = false) => {
+  const query = useCallback(() => {
+    const p = new URLSearchParams({ from, to });
+    if (emp?._id) p.set('employee', emp._id);
+    if (showEmpty) p.set('showEmpty', '1');
+    return p.toString();
+  }, [from, to, emp, showEmpty]);
+
+  const load = useCallback(async () => {
+    const my = ++seq.current;
+    setLoading(true);
+    setErr(null);
+    try {
+      const r = await api(`/api/attendance/register?${query()}`);
+      if (my === seq.current) setData(r);
+    } catch (e) {
+      if (my === seq.current) {
+        setErr(e.message);
+        setData(null);
+      }
+    } finally {
+      if (my === seq.current) setLoading(false);
+    }
+  }, [query]);
+
+  useEffect(() => {
+    if (ready) load();
+  }, [ready, load]);
+
+  // Device theke sync kore tarpor register abar load kori
+  const sync = async () => {
     if (syncing) return;
     setSyncing(true);
+    setErr(null);
     try {
-      const r = await runSync();
-      if (!silent) setToast({ text: `Synced: ${r.written} new punches (${r.logs} logs on device).` });
+      const r = await api('/api/sync', { method: 'POST' });
+      await load();
+      setToast({ text: `Synced: ${r.written} new punches (${r.logs} logs on device).` });
     } catch (e) {
+      setErr(e.message);
       setToast({ err: true, text: `Sync failed: ${e.message}` });
     } finally {
       setSyncing(false);
     }
   };
 
+  // Filter badalale purono row-er editor bondho
+  useEffect(() => {
+    setEditing(null);
+  }, [from, to, emp, showEmpty]);
+
   const pickEmp = (e) => {
     setEmp(e);
     setSearchKey((k) => k + 1);
+  };
+
+  const setFromDate = (v) => {
+    if (!v) return;
+    setFrom(v);
+    if (to && v > to) setTo(v);
+  };
+  const setToDate = (v) => {
+    if (!v) return;
+    setTo(v);
+    if (from && v < from) setFrom(v);
+  };
+
+  const startEdit = (row) => {
+    setErr(null);
+    setEditing({ key: rowKey(row), inTime: toHHMM(row.inTime), outTime: toHHMM(row.outTime) });
+  };
+
+  const saveRow = async (row) => {
+    const key = rowKey(row);
+    const nextIn = editing?.inTime || '';
+    const nextOut = editing?.outTime || '';
+    // Device time-i ache, notun override kora lagbe na
+    if (!row.edited && nextIn === toHHMM(row.inTime) && nextOut === toHHMM(row.outTime)) {
+      setEditing(null);
+      return;
+    }
+    if (nextIn && nextOut && nextOut <= nextIn) {
+      setErr('Check-out must be after check-in.');
+      return;
+    }
+    setSavingKey(key);
+    setErr(null);
+    try {
+      await api(`/api/employees/${row.employee}/attendance-edit`, {
+        method: 'PUT',
+        body: JSON.stringify({ date: row.date, inTime: nextIn, outTime: nextOut }),
+      });
+      setEditing(null);
+      await load();
+      setToast({ text: `Saved ${row.name} on ${fmtDate(row.date)}. Overtime recalculated.` });
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  const pdf = async () => {
+    setPdfBusy(true);
+    setErr(null);
+    try {
+      await downloadFile(
+        `/api/attendance/register-pdf?${query()}&timeFormat=${timeFormat}`,
+        `Attendance_Register_${from}${from === to ? '' : `_to_${to}`}.pdf`
+      );
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
+  const print = async () => {
+    setPrintBusy(true);
+    setErr(null);
+    try {
+      await printFile(`/api/attendance/register-pdf?${query()}&timeFormat=${timeFormat}`);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setPrintBusy(false);
+    }
   };
 
   const logout = () => {
@@ -239,6 +411,10 @@ export default function ReportsPage() {
   };
 
   if (!ready) return null;
+
+  const rows = data?.rows || [];
+  const s = data?.summary;
+  const employeeChip = emp ? `${emp.name} — Employee ID ${emp.employeeId}, device ID ${emp.proximityId}` : null;
 
   return (
     <div className={`flex h-screen bg-zinc-100 text-zinc-900 ${plex.className}`}>
@@ -255,28 +431,25 @@ export default function ReportsPage() {
           <div className="flex min-w-0 items-center gap-2">
             <button
               onClick={() => setMobileOpen(true)}
-              className={`rounded-md p-1.5 text-zinc-600 hover:bg-zinc-100 md:hidden ${focus}`}
+              className={`rounded-md p-1.5 text-zinc-600 hover:bg-zinc-100 md:hidden ${focusRing}`}
               aria-label="Open menu"
             >
               <Menu className="h-5 w-5" />
             </button>
             <button
               onClick={() => setCollapsed((c) => !c)}
-              className={`hidden rounded-md p-1.5 text-zinc-600 hover:bg-zinc-100 md:block ${focus}`}
+              className={`hidden rounded-md p-1.5 text-zinc-600 hover:bg-zinc-100 md:block ${focusRing}`}
               aria-label="Toggle sidebar"
               title="Toggle sidebar"
             >
               <Menu className="h-5 w-5" />
             </button>
-            <h1 className="truncate text-sm font-semibold text-zinc-900">Attendance report</h1>
+            <h1 className="truncate text-sm font-semibold text-zinc-900">Attendance register</h1>
           </div>
 
           <div className="flex shrink-0 items-center gap-3">
             <DeviceStatus />
-            <span className="hidden text-sm text-zinc-500 tabular-nums sm:inline">
-              Last synced {fmtSyncTime(lastSync) || 'not yet'}
-            </span>
-            <button onClick={() => sync(false)} disabled={syncing} className={`${btnSecondary} flex items-center gap-2 py-1.5`}>
+            <button onClick={sync} disabled={syncing} className={`${btnSecondary} flex items-center gap-2`}>
               <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin motion-reduce:animate-none' : ''}`} />
               {syncing ? 'Syncing' : 'Sync'}
             </button>
@@ -286,49 +459,240 @@ export default function ReportsPage() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto p-4 md:p-8">
-          <div className="max-w-4xl">
-            <div className="mb-6">
-              <h2 className="text-2xl font-semibold text-zinc-900">Employee attendance report</h2>
-              <p className="mt-1 mb-4 text-sm text-zinc-500">
-                Search by employee ID or by proximity ID, pick a month, then view the report, download the PDF or print it.
-              </p>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-                <SearchBox
-                  key={`employeeId-${searchKey}`}
-                  by="employeeId"
-                  label="Employee ID"
-                  placeholder="Search by employee ID"
-                  onSelect={pickEmp}
-                />
-                <SearchBox
-                  key={`proximityId-${searchKey}`}
-                  by="proximityId"
-                  label="Proximity ID"
-                  placeholder="Search by proximity ID"
-                  onSelect={pickEmp}
-                />
+        <main className="flex-1 overflow-auto p-3 md:p-4">
+          <div className="w-full">
+            {/* Filters */}
+            <div className="rounded-md border border-zinc-300 bg-white px-3 py-3">
+              <div className="flex flex-wrap items-end gap-3">
+                <EmployeeSearch key={searchKey} onSelect={pickEmp} />
+
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-zinc-700">From</span>
+                  <input
+                    type="date"
+                    value={from}
+                    max={to || undefined}
+                    onChange={(e) => setFromDate(e.target.value)}
+                    className={`${inputCls} w-36`}
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-zinc-700">To</span>
+                  <input
+                    type="date"
+                    value={to}
+                    min={from || undefined}
+                    onChange={(e) => setToDate(e.target.value)}
+                    className={`${inputCls} w-36`}
+                  />
+                </label>
+
+                <label className="flex items-center gap-2 pb-1.5 text-[13px] text-zinc-700">
+                  <input
+                    type="checkbox"
+                    checked={showEmpty}
+                    onChange={(e) => setShowEmpty(e.target.checked)}
+                    className="h-4 w-4 rounded border-zinc-300 text-teal-800 focus:ring-teal-700/40"
+                  />
+                  Include days with no punch
+                </label>
+
+                <div className="ml-auto flex items-center gap-2">
+                  <button onClick={pdf} disabled={pdfBusy || !rows.length} className={`${btnSecondary} flex items-center gap-2`}>
+                    {pdfBusy ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Download className="h-4 w-4" />}
+                    {pdfBusy ? 'Preparing PDF' : 'Download PDF'}
+                  </button>
+                  <button onClick={print} disabled={printBusy || !rows.length} className={`${btnSecondary} flex items-center gap-2`}>
+                    {printBusy ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Printer className="h-4 w-4" />}
+                    {printBusy ? 'Preparing print' : 'Print'}
+                  </button>
+                </div>
               </div>
+
+              {employeeChip && (
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-zinc-600">
+                  <span className="rounded-full bg-teal-50 px-3 py-1 font-medium text-teal-800">{employeeChip}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmp(null);
+                      setSearchKey((k) => k + 1);
+                    }}
+                    className={linkBtn}
+                  >
+                    Clear employee filter
+                  </button>
+                </div>
+              )}
             </div>
 
-            {emp ? (
-              <MonthlyView key={emp._id} id={emp._id} />
-            ) : (
-              <div className="rounded-md border border-dashed border-zinc-300 bg-white px-4 py-16 text-center text-sm text-zinc-500">
-                Search by Employee ID or Proximity ID above to view a report.
+            {err && (
+              <div
+                role="alert"
+                className="mt-3 rounded-md border border-l-4 border-zinc-300 border-l-red-700 bg-white px-4 py-3 text-sm text-red-700"
+              >
+                {err}
               </div>
             )}
+
+            {/* Rows */}
+            <div className="mt-3 overflow-hidden rounded-md border border-zinc-300 bg-white">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-3 py-2.5">
+                <p className="text-sm font-medium text-zinc-900">
+                  {fmtDate(from)}
+                  {from === to ? '' : ` to ${fmtDate(to)}`}
+                  <span className="ml-2 font-normal text-zinc-500">
+                    {loading ? 'Loading' : `${s ? s.rows : 0} row${s && s.rows === 1 ? '' : 's'}`}
+                  </span>
+                </p>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-[13px]">
+                  <thead className="border-b border-zinc-300 bg-zinc-50 text-zinc-500">
+                    <tr>
+                      {['Date', 'Emp ID', 'Device ID', 'Name', 'Check-in', 'Check-out', 'Hours', 'Punches', 'OT', 'Status'].map((h) => (
+                        <th key={h} className={th}>
+                          {h}
+                        </th>
+                      ))}
+                      <th className={`${th} text-right`}>Edit</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-200">
+                    {rows.map((r) => {
+                      const key = rowKey(r);
+                      const isEditing = editing?.key === key;
+                      const saving = savingKey === key;
+                      const quiet = r.status === 'Weekend' || r.status === 'Holiday';
+                      return (
+                        <tr key={key} className={quiet ? 'bg-zinc-50 text-zinc-500' : 'text-zinc-800'}>
+                          <td className={`${td} font-medium`}>{fmtDate(r.date)}</td>
+                          <td className={td}>{r.employeeId}</td>
+                          <td className={td}>{r.proximityId}</td>
+                          <td className={`${td} max-w-[180px] truncate`} title={r.name}>
+                            {r.name}
+                            {r.edited && <span className="ml-2 text-xs font-medium text-teal-800">edited</span>}
+                          </td>
+                          <td className={td}>
+                            {isEditing ? (
+                              <input
+                                type="time"
+                                value={editing.inTime}
+                                onChange={(e) => setEditing((x) => ({ ...x, inTime: e.target.value }))}
+                                aria-label={`Check-in for ${r.name} on ${fmtDate(r.date)}`}
+                                className={`${inputCls} w-28 px-2 py-1`}
+                              />
+                            ) : (
+                              fmtTime(r.inTime)
+                            )}
+                          </td>
+                          <td className={td}>
+                            {isEditing ? (
+                              <input
+                                type="time"
+                                value={editing.outTime}
+                                onChange={(e) => setEditing((x) => ({ ...x, outTime: e.target.value }))}
+                                aria-label={`Check-out for ${r.name} on ${fmtDate(r.date)}`}
+                                className={`${inputCls} w-28 px-2 py-1`}
+                              />
+                            ) : (
+                              fmtTime(r.outTime)
+                            )}
+                          </td>
+                          <td className={td}>{r.hours ?? '-'}</td>
+                          <td className={td}>{r.punches || '-'}</td>
+                          <td className={`${td} ${r.status === 'Present' ? 'text-teal-800' : ''}`}>
+                            {r.status === 'Present' ? fmtHM(r.otFinalMinutes) : '-'}
+                            {r.status === 'Present' && r.manualOt && (
+                              <span className="ml-1 text-xs text-zinc-500">manual</span>
+                            )}
+                          </td>
+                          <td className={td}>
+                            <span className={statusTone(r.status)}>{r.status || '-'}</span>
+                            {r.holidayName && <span className="ml-2 text-xs text-zinc-500">{r.holidayName}</span>}
+                          </td>
+                          <td className={`${td} text-right`}>
+                            {isEditing ? (
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => saveRow(r)}
+                                  disabled={saving}
+                                  title="Save check-in and check-out"
+                                  aria-label={`Save ${r.name} on ${fmtDate(r.date)}`}
+                                  className={`rounded-md p-1 text-teal-800 hover:bg-teal-50 disabled:opacity-50 ${focusRing}`}
+                                >
+                                  {saving ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Check className="h-4 w-4" />}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditing(null)}
+                                  disabled={saving}
+                                  title="Cancel"
+                                  aria-label="Cancel editing"
+                                  className={`rounded-md p-1 text-zinc-500 hover:bg-zinc-100 disabled:opacity-50 ${focusRing}`}
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => startEdit(r)}
+                                title="Edit check-in and check-out"
+                                aria-label={`Edit ${r.name} on ${fmtDate(r.date)}`}
+                                className={`rounded-md p-1 text-zinc-500 hover:bg-zinc-100 hover:text-teal-800 ${focusRing}`}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+
+                    {data && !rows.length && (
+                      <tr>
+                        <td colSpan={11} className="px-4 py-12 text-center text-sm text-zinc-500">
+                          No attendance rows for these filters.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+
+                  {s && rows.length > 0 && (
+                    <tfoot className="border-t border-zinc-300 bg-zinc-50 text-zinc-900">
+                      <tr>
+                        <td className={`${td} font-semibold`} colSpan={6}>
+                          Total
+                        </td>
+                        <td className={`${td} font-semibold`}>{s.totalHours}</td>
+                        <td className={td} />
+                        <td className={`${td} font-semibold text-teal-800`}>{fmtHM(s.otFinalMinutes)}</td>
+                        <td className={td} colSpan={2} />
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+
+              {s && rows.length > 0 && (
+                <p className="border-t border-zinc-200 px-3 py-2.5 text-sm text-zinc-500">
+                  Present {s.presentDays} · Missing out {s.missingOut} · Absent {s.absent} · Leave {s.leave} · Holiday{' '}
+                  {s.holiday} · Weekend {s.weekend}. Total overtime {fmtHM(s.otFinalMinutes)}.
+                </p>
+              )}
+            </div>
           </div>
         </main>
       </div>
 
-      {/* Toast */}
       {toast && (
         <div
           role="status"
-          className={`fixed bottom-4 right-4 z-50 max-w-sm rounded-md bg-zinc-900 px-4 py-2.5 text-sm text-white ${
-            toast.err ? 'border-l-4 border-red-500' : ''
-          }`}
+          className={`fixed bottom-4 right-4 z-50 max-w-sm rounded-md px-4 py-2.5 text-sm text-white ${toast.err ? 'bg-red-700' : 'bg-zinc-900'}`}
         >
           {toast.text}
         </div>
