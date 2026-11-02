@@ -517,7 +517,7 @@ export default function AttendanceRegisterPage() {
 
               <div className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 <table className="w-full text-left text-[13px]">
-                  <thead className="border-b border-zinc-300 bg-zinc-50 text-zinc-500">
+                  <thead className="border-b border-zinc-300 bg-zinc-90 text-zinc-900">
                     <tr>
                       {['Date', 'Emp ID', 'Device', 'Name', 'Check-in', 'Check-out', 'Hours', 'Punch', 'OT', 'Status'].map((h) => (
                         <th key={h} className={`${th} ${h === 'Check-in' || h === 'Check-out' ? timeCol : ''}`}>
