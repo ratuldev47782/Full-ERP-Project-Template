@@ -5,10 +5,9 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { RefreshCw } from 'lucide-react';
 import { IBM_Plex_Sans } from 'next/font/google';
 import SideNavBar from '../components/SideNavBar';
-import { formatDateTime, useTimeFormat } from '../timeFormat';
+import { useTimeFormat } from '../timeFormat';
 import { confirmDialog } from '../../lib/dialog';
 
 const plex = IBM_Plex_Sans({ subsets: ['latin'], weight: ['400', '500', '600'], display: 'swap' });
@@ -42,18 +41,6 @@ async function api(path, options = {}) {
 
 const LAST_SYNC_KEY = 'lastSync';
 const SYNC_EVENT = 'attendance:synced';
-
-async function runSync() {
-  const result = await api('/api/sync', { method: 'POST' });
-  const at = new Date().toISOString();
-  try {
-    localStorage.setItem(LAST_SYNC_KEY, at);
-  } catch {}
-  window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: { at, result } }));
-  return result;
-}
-
-const fmtSyncTime = (iso) => formatDateTime(iso);
 
 const fields = [
   { key: 'employeeId', label: 'Employee ID', required: true },
@@ -134,31 +121,19 @@ export default function EmployeesPage() {
   const [msg, setMsg] = useState(null); // { type: 'ok' | 'err', text }
   const [saving, setSaving] = useState(false);
 
-  // header / sidebar shell
-  const [collapsed, setCollapsed] = useState(false);
+  // sidebar shell
   const [mobileOpen, setMobileOpen] = useState(false);
   const [ready, setReady] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [lastSync, setLastSync] = useState(null);
   const [toast, setToast] = useState(null); // { err, text }
 
   useEffect(() => {
     if (!localStorage.getItem('token')) router.replace('/login');
-    else {
-      setReady(true);
-      setLastSync(localStorage.getItem(LAST_SYNC_KEY));
-    }
+    else setReady(true);
   }, [router]);
 
   useEffect(() => {
     setMobileOpen(false);
   }, [path]);
-
-  useEffect(() => {
-    const h = (e) => setLastSync(e.detail?.at || localStorage.getItem(LAST_SYNC_KEY));
-    window.addEventListener(SYNC_EVENT, h);
-    return () => window.removeEventListener(SYNC_EVENT, h);
-  }, []);
 
   useEffect(() => {
     if (!toast) return;
@@ -181,19 +156,6 @@ export default function EmployeesPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showForm, saving]);
-
-  const sync = async (silent = false) => {
-    if (syncing) return;
-    setSyncing(true);
-    try {
-      const r = await runSync();
-      if (!silent) setToast({ text: `Synced: ${r.written} new punches (${r.logs} logs on device).` });
-    } catch (e) {
-      setToast({ err: true, text: `Sync failed: ${e.message}` });
-    } finally {
-      setSyncing(false);
-    }
-  };
 
   const logout = () => {
     localStorage.removeItem('token');
@@ -296,9 +258,8 @@ export default function EmployeesPage() {
 
   return (
     <div className={`flex h-screen bg-zinc-100 text-zinc-900 ${plex.className}`}>
+      {/* The sidebar manages its own collapsed state (saved in localStorage) */}
       <SideNavBar
-        collapsed={collapsed}
-        onToggle={() => setCollapsed((c) => !c)}
         onOpen={() => setMobileOpen(true)}
         mobileOpen={mobileOpen}
         onClose={() => setMobileOpen(false)}
@@ -306,8 +267,8 @@ export default function EmployeesPage() {
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
-                <main className="pt-16 flex-1 overflow-auto p-4 md:p-8">
-          <div className="max-w-4xl">
+        <main className="flex-1 overflow-auto p-4 pt-16 md:p-6 md:pt-6">
+          <div className="w-full max-w-none">
             <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
               <div>
                 <h2 className="text-2xl font-semibold text-zinc-900">Employees</h2>
@@ -350,7 +311,7 @@ export default function EmployeesPage() {
               </div>
 
               {/* Table */}
-              <div className="overflow-x-auto border-t border-zinc-300">
+              <div className="overflow-x-auto border-t border-zinc-300 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 <table className="w-full min-w-[640px] text-left text-sm">
                   <thead className="border-b border-zinc-300 bg-zinc-50 text-zinc-500">
                     <tr>

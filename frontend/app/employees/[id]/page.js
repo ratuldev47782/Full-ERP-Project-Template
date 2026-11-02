@@ -5,11 +5,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { RefreshCw } from 'lucide-react';
 import { IBM_Plex_Sans } from 'next/font/google';
 import SideNavBar from '../../components/SideNavBar';
 import MonthlyView from '../../components/MonthlyView';
-import { formatDateTime, useTimeFormat } from '../../timeFormat';
+import { useTimeFormat } from '../../timeFormat';
 
 const plex = IBM_Plex_Sans({ subsets: ['latin'], weight: ['400', '500', '600'], display: 'swap' });
 
@@ -48,16 +47,13 @@ async function runSync() {
   const at = new Date().toISOString();
   try {
     localStorage.setItem(LAST_SYNC_KEY, at);
-  } catch { }
+  } catch {}
   window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: { at, result } }));
   return result;
 }
 
-const fmtSyncTime = (iso) => formatDateTime(iso);
-
 /* ---------- shared classes ---------- */
 const focus = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700/40';
-const btnSecondary = `rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60 ${focus}`;
 const linkBtn = `rounded text-sm font-medium text-teal-800 hover:underline disabled:opacity-60 ${focus}`;
 
 export default function EmployeeDetail() {
@@ -66,32 +62,20 @@ export default function EmployeeDetail() {
   const router = useRouter();
   const path = usePathname();
 
-  const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [ready, setReady] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [lastSync, setLastSync] = useState(null);
   const [toast, setToast] = useState(null); // { err, text }
   const autoDone = useRef(false);
 
   useEffect(() => {
     if (!localStorage.getItem('token')) router.replace('/login');
-    else {
-      setReady(true);
-      setLastSync(localStorage.getItem(LAST_SYNC_KEY));
-    }
+    else setReady(true);
   }, [router]);
 
   useEffect(() => {
     setMobileOpen(false);
   }, [path]);
-
-  // onno jaygay (jemon dashboard-er button) sync hole last-synced time update
-  useEffect(() => {
-    const h = (e) => setLastSync(e.detail?.at || localStorage.getItem(LAST_SYNC_KEY));
-    window.addEventListener(SYNC_EVENT, h);
-    return () => window.removeEventListener(SYNC_EVENT, h);
-  }, []);
 
   useEffect(() => {
     if (!toast) return;
@@ -130,9 +114,8 @@ export default function EmployeeDetail() {
 
   return (
     <div className={`flex h-screen bg-zinc-100 text-zinc-900 ${plex.className}`}>
+      {/* The sidebar manages its own collapsed state (saved in localStorage) */}
       <SideNavBar
-        collapsed={collapsed}
-        onToggle={() => setCollapsed((c) => !c)}
         onOpen={() => setMobileOpen(true)}
         mobileOpen={mobileOpen}
         onClose={() => setMobileOpen(false)}
@@ -140,8 +123,8 @@ export default function EmployeeDetail() {
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
-                <main className="pt-16 flex-1 overflow-auto p-4 md:p-8">
-          <div className="max-w-4xl">
+        <main className="flex-1 overflow-auto p-4 pt-16 md:p-6 md:pt-6">
+          <div className="w-full max-w-none">
             <Link href="/employees" className={`mb-4 inline-block ${linkBtn}`}>
               Back to employees
             </Link>

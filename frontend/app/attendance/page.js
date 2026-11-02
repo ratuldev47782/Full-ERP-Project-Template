@@ -111,10 +111,14 @@ const focusRing = 'focus-visible:outline-none focus-visible:ring-2 focus-visible
 // compact input (filters)
 const inputCls =
   'rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-[13px] text-zinc-900 outline-none focus:border-teal-700 focus:ring-2 focus:ring-teal-700/25';
-const btnSecondary = `rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-[13px] font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60 ${focusRing}`;
+const btnSecondary = `rounded-md bg-teal-800 px-3 py-2 text-[13px] font-medium text-white hover:bg-teal-900 disabled:opacity-60 ${focusRing}`;
 const linkBtn = `rounded text-sm font-medium text-teal-800 hover:underline disabled:opacity-60 ${focusRing}`;
-const th = 'px-2 py-2 font-medium whitespace-nowrap';
-const td = 'px-2 py-1.5 align-middle whitespace-nowrap tabular-nums';
+const th = 'px-1.5 py-2 font-medium whitespace-nowrap';
+const td = 'px-1.5 py-1.5 align-middle whitespace-nowrap tabular-nums';
+// Fixed width for the time columns so entering edit mode never changes the table width
+const timeCol = 'w-[5.75rem] min-w-[5.75rem] max-w-[5.75rem]';
+// Time input inside edit mode: always fills its fixed-width cell
+const timeInputCls = `${inputCls} w-full min-w-0 px-1 py-1 text-xs`;
 
 const statusTone = (status) => {
   if (status === 'Present') return 'font-medium text-teal-800';
@@ -229,7 +233,6 @@ export default function AttendanceRegisterPage() {
   const router = useRouter();
   const path = usePathname();
 
-  const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [ready, setReady] = useState(false);
   const [toast, setToast] = useState(null);
@@ -414,9 +417,8 @@ export default function AttendanceRegisterPage() {
 
   return (
     <div className={`flex h-screen bg-zinc-100 text-zinc-900 ${plex.className}`}>
+      {/* The sidebar manages its own collapsed state (saved in localStorage) */}
       <SideNavBar
-        collapsed={collapsed}
-        onToggle={() => setCollapsed((c) => !c)}
         onOpen={() => setMobileOpen(true)}
         mobileOpen={mobileOpen}
         onClose={() => setMobileOpen(false)}
@@ -424,8 +426,8 @@ export default function AttendanceRegisterPage() {
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
-                <main className="pt-16 flex-1 overflow-auto p-3 md:p-4">
-          <div className="w-full">
+        <main className="flex-1 overflow-auto p-3 pt-16 md:p-4">
+          <div className="mx-0 w-full max-w-none">
             {/* Filters */}
             <div className="rounded-md border border-zinc-300 bg-white px-3 py-3">
               <div className="flex flex-wrap items-end gap-3">
@@ -453,7 +455,7 @@ export default function AttendanceRegisterPage() {
                   />
                 </label>
 
-                <label className="flex items-center gap-2 pb-1.5 text-[13px] text-zinc-700">
+                <label className="flex shrink-0 items-center gap-2 whitespace-nowrap pb-2 text-[13px] text-zinc-700">
                   <input
                     type="checkbox"
                     checked={showEmpty}
@@ -463,7 +465,7 @@ export default function AttendanceRegisterPage() {
                   Include days with no punch
                 </label>
 
-                <div className="ml-auto flex items-center gap-2">
+                <div className="ml-auto flex shrink-0 items-center gap-2">
                   <button onClick={pdf} disabled={pdfBusy || !rows.length} className={`${btnSecondary} flex items-center gap-2`}>
                     {pdfBusy ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Download className="h-4 w-4" />}
                     {pdfBusy ? 'Preparing PDF' : 'Download PDF'}
@@ -513,12 +515,12 @@ export default function AttendanceRegisterPage() {
                 </p>
               </div>
 
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 <table className="w-full text-left text-[13px]">
                   <thead className="border-b border-zinc-300 bg-zinc-50 text-zinc-500">
                     <tr>
-                      {['Date', 'Emp ID', 'Device ID', 'Name', 'Check-in', 'Check-out', 'Hours', 'Punches', 'OT', 'Status'].map((h) => (
-                        <th key={h} className={th}>
+                      {['Date', 'Emp ID', 'Device', 'Name', 'Check-in', 'Check-out', 'Hours', 'Punch', 'OT', 'Status'].map((h) => (
+                        <th key={h} className={`${th} ${h === 'Check-in' || h === 'Check-out' ? timeCol : ''}`}>
                           {h}
                         </th>
                       ))}
@@ -536,31 +538,31 @@ export default function AttendanceRegisterPage() {
                           <td className={`${td} font-medium`}>{fmtDate(r.date)}</td>
                           <td className={td}>{r.employeeId}</td>
                           <td className={td}>{r.proximityId}</td>
-                          <td className={`${td} max-w-[180px] truncate`} title={r.name}>
+                          <td className={`${td} max-w-[110px] truncate lg:max-w-[180px]`} title={r.name}>
                             {r.name}
                             {r.edited && <span className="ml-2 text-xs font-medium text-teal-800">edited</span>}
                           </td>
-                          <td className={td}>
+                          <td className={`${td} ${timeCol}`}>
                             {isEditing ? (
                               <input
                                 type="time"
                                 value={editing.inTime}
                                 onChange={(e) => setEditing((x) => ({ ...x, inTime: e.target.value }))}
                                 aria-label={`Check-in for ${r.name} on ${fmtDate(r.date)}`}
-                                className={`${inputCls} w-28 px-2 py-1`}
+                                className={timeInputCls}
                               />
                             ) : (
                               fmtTime(r.inTime)
                             )}
                           </td>
-                          <td className={td}>
+                          <td className={`${td} ${timeCol}`}>
                             {isEditing ? (
                               <input
                                 type="time"
                                 value={editing.outTime}
                                 onChange={(e) => setEditing((x) => ({ ...x, outTime: e.target.value }))}
                                 aria-label={`Check-out for ${r.name} on ${fmtDate(r.date)}`}
-                                className={`${inputCls} w-28 px-2 py-1`}
+                                className={timeInputCls}
                               />
                             ) : (
                               fmtTime(r.outTime)
@@ -574,7 +576,8 @@ export default function AttendanceRegisterPage() {
                               <span className="ml-1 text-xs text-zinc-500">manual</span>
                             )}
                           </td>
-                          <td className={td}>
+                          {/* Status may wrap (long holiday names) instead of widening the table */}
+                          <td className="px-1.5 py-1.5 align-middle tabular-nums">
                             <span className={statusTone(r.status)}>{r.status || '-'}</span>
                             {r.holidayName && <span className="ml-2 text-xs text-zinc-500">{r.holidayName}</span>}
                           </td>
@@ -587,7 +590,7 @@ export default function AttendanceRegisterPage() {
                                   disabled={saving}
                                   title="Save check-in and check-out"
                                   aria-label={`Save ${r.name} on ${fmtDate(r.date)}`}
-                                  className={`rounded-md p-1 text-teal-800 hover:bg-teal-50 disabled:opacity-50 ${focusRing}`}
+                                  className={`rounded-md bg-teal-800 p-1.5 text-white hover:bg-teal-900 disabled:opacity-50 ${focusRing}`}
                                 >
                                   {saving ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Check className="h-4 w-4" />}
                                 </button>
@@ -597,7 +600,7 @@ export default function AttendanceRegisterPage() {
                                   disabled={saving}
                                   title="Cancel"
                                   aria-label="Cancel editing"
-                                  className={`rounded-md p-1 text-zinc-500 hover:bg-zinc-100 disabled:opacity-50 ${focusRing}`}
+                                  className={`rounded-md border border-zinc-300 p-1.5 text-zinc-600 hover:bg-zinc-100 disabled:opacity-50 ${focusRing}`}
                                 >
                                   <X className="h-4 w-4" />
                                 </button>
@@ -608,7 +611,7 @@ export default function AttendanceRegisterPage() {
                                 onClick={() => startEdit(r)}
                                 title="Edit check-in and check-out"
                                 aria-label={`Edit ${r.name} on ${fmtDate(r.date)}`}
-                                className={`rounded-md p-1 text-zinc-500 hover:bg-zinc-100 hover:text-teal-800 ${focusRing}`}
+                                className={`rounded-md bg-teal-800 p-1.5 text-white hover:bg-teal-900 ${focusRing}`}
                               >
                                 <Pencil className="h-4 w-4" />
                               </button>

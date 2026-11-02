@@ -47,12 +47,10 @@ async function runSync() {
   const at = new Date().toISOString();
   try {
     localStorage.setItem(LAST_SYNC_KEY, at);
-  } catch { }
+  } catch {}
   window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: { at, result } }));
   return result;
 }
-
-const fmtSyncTime = (iso) => formatDateTime(iso);
 
 // Shob date/time Bangladesh time (Asia/Dhaka) onujayi dekhano hoy.
 const TZ = 'Asia/Dhaka';
@@ -75,9 +73,10 @@ const inputCls =
   'rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-teal-700 focus:ring-2 focus:ring-teal-700/25';
 const btnSecondary = `rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60 ${focus}`;
 const btnDanger = `rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-60 ${focus}`;
-const linkBtn = `rounded text-sm font-medium text-teal-800 hover:underline disabled:opacity-60 ${focus}`;
-const th = 'px-4 py-2.5 font-medium whitespace-nowrap';
-const td = 'px-4 py-2.5 align-top';
+const th = 'px-3 py-2.5 font-medium whitespace-nowrap';
+const td = 'px-3 py-2 align-top';
+// sticky header so the table header stays visible while the rows scroll
+const thead = 'sticky top-0 z-10 border-b border-zinc-300 bg-zinc-50 text-zinc-500';
 
 /* ---------- colors (chart) ---------- */
 const C = {
@@ -227,7 +226,7 @@ function DeptBars({ rows }) {
   }
 
   return (
-    <ul className="max-h-[26rem] space-y-2.5 overflow-y-auto pr-1">
+    <ul className="space-y-2.5">
       {list.map((g) => (
         <li key={g.name}>
           <div className="mb-1 flex items-baseline justify-between gap-3 text-sm">
@@ -282,50 +281,18 @@ export default function Dashboard() {
   const cache = useRef(new Map());
   const reqId = useRef(0);
 
-  // header / sidebar shell
-  const [collapsed, setCollapsed] = useState(false);
+  // sidebar shell
   const [mobileOpen, setMobileOpen] = useState(false);
   const [ready, setReady] = useState(false);
-  const [shellSyncing, setShellSyncing] = useState(false);
-  const [lastSync, setLastSync] = useState(null);
-  const [toast, setToast] = useState(null); // { err, text }
 
   useEffect(() => {
     if (!localStorage.getItem('token')) router.replace('/login');
-    else {
-      setReady(true);
-      setLastSync(localStorage.getItem(LAST_SYNC_KEY));
-    }
+    else setReady(true);
   }, [router]);
 
   useEffect(() => {
     setMobileOpen(false);
   }, [path]);
-
-  useEffect(() => {
-    const h = (e) => setLastSync(e.detail?.at || localStorage.getItem(LAST_SYNC_KEY));
-    window.addEventListener(SYNC_EVENT, h);
-    return () => window.removeEventListener(SYNC_EVENT, h);
-  }, []);
-
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 4000);
-    return () => clearTimeout(t);
-  }, [toast]);
-
-  const headerSync = async () => {
-    if (shellSyncing) return;
-    setShellSyncing(true);
-    try {
-      const r = await runSync();
-      setToast({ text: `Synced: ${r.written} new punches (${r.logs} logs on device).` });
-    } catch (e) {
-      setToast({ err: true, text: `Sync failed: ${e.message}` });
-    } finally {
-      setShellSyncing(false);
-    }
-  };
 
   const logout = () => {
     localStorage.removeItem('token');
@@ -380,14 +347,14 @@ export default function Dashboard() {
   const checkStatus = useCallback(async () => {
     try {
       setStatus(await api('/api/status'));
-    } catch { }
+    } catch {}
   }, []);
 
   useEffect(() => {
     checkStatus();
   }, [checkStatus]);
 
-  // Header-er Sync button ba ei page-er Sync, jekono jaygay sync hole auto reload
+  // Sidebar-er Sync button ba ei page-er Sync, jekono jaygay sync hole auto reload
   useEffect(() => {
     const h = () => {
       cache.current.clear();
@@ -481,9 +448,8 @@ export default function Dashboard() {
 
   return (
     <div className={`flex h-screen bg-zinc-100 text-zinc-900 ${plex.className}`}>
+      {/* The sidebar manages its own collapsed state (saved in localStorage) */}
       <SideNavBar
-        collapsed={collapsed}
-        onToggle={() => setCollapsed((c) => !c)}
         onOpen={() => setMobileOpen(true)}
         mobileOpen={mobileOpen}
         onClose={() => setMobileOpen(false)}
@@ -491,13 +457,14 @@ export default function Dashboard() {
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
-                <main className="pt-16 flex-1 overflow-auto p-4 md:p-8">
-          <div className="max-w-6xl">
+        {/* Phone/tablet: page scrolls. Desktop (lg+): everything fits one screen and the two columns scroll inside. */}
+        <main className="flex-1 overflow-auto p-4 pt-16 md:p-5 md:pt-5 lg:overflow-hidden">
+          <div className="flex w-full max-w-none flex-col lg:h-full">
             {/* Title + date */}
-            <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+            <div className="mb-3 flex shrink-0 flex-wrap items-end justify-between gap-3">
               <div>
                 <h2 className="text-2xl font-semibold text-zinc-900">Attendance overview</h2>
-                <p className="mt-1 text-sm text-zinc-500 tabular-nums">
+                <p className="mt-0.5 text-sm text-zinc-500 tabular-nums">
                   {fmtDate(date)}
                   {loadingTrend ? ', loading' : ''}
                   {isOffDay ? ', no working-day records (holiday, weekend or no data)' : ''}
@@ -510,7 +477,7 @@ export default function Dashboard() {
             </div>
 
             {/* Device bar */}
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-zinc-300 bg-white px-4 py-3">
+            <div className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-md border border-zinc-300 bg-white px-4 py-2.5">
               <div className="flex items-center gap-2 text-sm text-zinc-700">
                 <span
                   className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${
@@ -526,11 +493,11 @@ export default function Dashboard() {
                 </span>
               </div>
               <div className="flex flex-wrap gap-2">
-                <button onClick={sync} disabled={busy} className={`${btnSecondary} flex items-center gap-2`}>
+                <button onClick={sync} disabled={busy} className={`${btnSecondary} flex items-center gap-2 py-1.5`}>
                   <RefreshCw className={`h-4 w-4 ${busy ? 'animate-spin motion-reduce:animate-none' : ''}`} />
                   {busy ? 'Working' : 'Sync from device'}
                 </button>
-                <button onClick={clearDevice} disabled={busy} className={`${btnDanger} flex items-center gap-2`}>
+                <button onClick={clearDevice} disabled={busy} className={`${btnDanger} flex items-center gap-2 py-1.5`}>
                   <Trash2 className="h-4 w-4" />
                   Clear device logs
                 </button>
@@ -540,7 +507,7 @@ export default function Dashboard() {
             {msg && (
               <div
                 role={msg.err ? 'alert' : 'status'}
-                className={`mb-4 rounded-md border border-l-4 border-zinc-300 bg-white px-4 py-3 text-sm ${
+                className={`mb-3 shrink-0 rounded-md border border-l-4 border-zinc-300 bg-white px-4 py-2.5 text-sm ${
                   msg.err ? 'border-l-red-700 text-red-700' : 'border-l-teal-700 text-zinc-800'
                 }`}
               >
@@ -548,7 +515,10 @@ export default function Dashboard() {
               </div>
             )}
             {status && !status.connected && (
-              <div role="alert" className="mb-4 rounded-md border border-l-4 border-zinc-300 border-l-red-700 bg-white px-4 py-3 text-sm text-red-700">
+              <div
+                role="alert"
+                className="mb-3 shrink-0 rounded-md border border-l-4 border-zinc-300 border-l-red-700 bg-white px-4 py-2.5 text-sm text-red-700"
+              >
                 Unable to connect to the device: {status.error}
               </div>
             )}
@@ -558,10 +528,10 @@ export default function Dashboard() {
               <div
                 role="group"
                 aria-label="Summary for selected date"
-                className="mb-5 grid grid-cols-2 gap-px border border-zinc-300 bg-zinc-200 sm:grid-cols-4 lg:grid-cols-8"
+                className="mb-3 grid shrink-0 grid-cols-2 gap-px border border-zinc-300 bg-zinc-200 sm:grid-cols-4 lg:grid-cols-8"
               >
                 {kpis.map(([label, value, tone]) => (
-                  <div key={label} className="bg-white px-3 py-2.5">
+                  <div key={label} className="bg-white px-3 py-2">
                     <div className="text-xs text-zinc-500">{label}</div>
                     <div className={`text-xl font-semibold tabular-nums ${tone}`}>{value}</div>
                   </div>
@@ -569,183 +539,178 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* Range */}
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold text-zinc-900">Trends</h3>
-              <div role="radiogroup" aria-label="Chart range" className="inline-flex overflow-hidden rounded-md border border-zinc-300 bg-white">
-                {[7, 14].map((n, i) => (
-                  <button
-                    key={n}
-                    type="button"
-                    role="radio"
-                    aria-checked={range === n}
-                    onClick={() => setRange(n)}
-                    className={`px-3 py-1.5 text-sm font-medium ${i > 0 ? 'border-l border-zinc-300' : ''} ${
-                      range === n ? 'bg-teal-800 text-white' : 'text-zinc-700 hover:bg-zinc-50'
-                    } ${focus}`}
+            {/* Two columns: charts (left) | tabbed table (right) */}
+            <div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+              {/* LEFT: charts */}
+              <div className="flex min-w-0 flex-col gap-3 lg:min-h-0 lg:overflow-y-auto lg:pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <div className="flex shrink-0 items-center justify-between gap-3">
+                  <h3 className="text-sm font-semibold text-zinc-900">Trends</h3>
+                  <div
+                    role="radiogroup"
+                    aria-label="Chart range"
+                    className="inline-flex overflow-hidden rounded-md border border-zinc-300 bg-white"
                   >
-                    Last {n} days
-                  </button>
-                ))}
-              </div>
-            </div>
+                    {[7, 14].map((n, i) => (
+                      <button
+                        key={n}
+                        type="button"
+                        role="radio"
+                        aria-checked={range === n}
+                        onClick={() => setRange(n)}
+                        className={`px-3 py-1.5 text-sm font-medium ${i > 0 ? 'border-l border-zinc-300' : ''} ${
+                          range === n ? 'bg-teal-800 text-white' : 'text-zinc-700 hover:bg-zinc-50'
+                        } ${focus}`}
+                      >
+                        Last {n} days
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-            {/* Charts */}
-            <div className="mb-6 grid gap-4 lg:grid-cols-2">
-              <Panel title="Attendance rate" note="Present divided by employees counted that day (leave and absent included).">
-                {trend.length ? (
-                  <LineChart
-                    data={trend.map((d) => ({ date: d.date, value: d.rate }))}
-                    ariaLabel={`Attendance rate for the last ${range} days, ending ${fmtDate(date)}`}
-                  />
-                ) : (
-                  <p className="py-16 text-center text-sm text-zinc-500">{loadingTrend ? 'Loading' : 'No data.'}</p>
-                )}
-              </Panel>
-
-              <Panel title="Department attendance" note={`Attended out of counted employees on ${fmtDate(date)}. All registered departments.`}>
-                <DeptBars rows={rows} />
-              </Panel>
-            </div>
-
-            {/* Tabs */}
-            <div className="mb-3 flex flex-wrap gap-1 border-b border-zinc-300" role="tablist">
-              {[
-                ['daily', 'Daily attendance'],
-                ['logs', 'Punch logs'],
-                ['users', 'Employees'],
-              ].map(([k, label]) => (
-                <button
-                  key={k}
-                  role="tab"
-                  aria-selected={tab === k}
-                  onClick={() => {
-                    setTab(k);
-                    if (k !== 'daily') setTabRows([]);
-                  }}
-                  className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${
-                    tab === k ? 'border-teal-800 text-teal-900' : 'border-transparent text-zinc-600 hover:text-zinc-900'
-                  } ${focus}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            {/* Table */}
-            <div className="overflow-hidden rounded-md border border-zinc-300 bg-white">
-              <div className="overflow-x-auto">
-                {tab === 'daily' ? (
-                  rows.length === 0 ? (
-                    <div className="px-4 py-12 text-center text-sm text-zinc-500">
-                      No attendance records found for this date. Use Sync from device to retrieve records.
-                    </div>
+                <Panel title="Attendance rate" note="Present divided by employees counted that day (leave and absent included).">
+                  {trend.length ? (
+                    <LineChart
+                      data={trend.map((d) => ({ date: d.date, value: d.rate }))}
+                      ariaLabel={`Attendance rate for the last ${range} days, ending ${fmtDate(date)}`}
+                    />
                   ) : (
-                    <table className="w-full min-w-[720px] text-left text-sm">
-                      <thead className="border-b border-zinc-300 bg-zinc-50 text-zinc-500">
-                        <tr>
-                          {['Emp ID', 'Device ID', 'Name', 'Check-in', 'Check-out', 'Hours', 'Punches', 'Status'].map((h) => (
-                            <th key={h} className={th}>
-                              {h}
-                            </th>
+                    <p className="py-16 text-center text-sm text-zinc-500">{loadingTrend ? 'Loading' : 'No data.'}</p>
+                  )}
+                </Panel>
+
+                <Panel title="Department attendance" note={`Attended out of counted employees on ${fmtDate(date)}. All registered departments.`}>
+                  <DeptBars rows={rows} />
+                </Panel>
+              </div>
+
+              {/* RIGHT: tabs + table */}
+              <div className="flex min-w-0 flex-col lg:min-h-0">
+                <div className="mb-2 flex shrink-0 flex-wrap gap-1 border-b border-zinc-300" role="tablist">
+                  {[
+                    ['daily', 'Daily attendance'],
+                    ['logs', 'Punch logs'],
+                    ['users', 'Employees'],
+                  ].map(([k, label]) => (
+                    <button
+                      key={k}
+                      role="tab"
+                      aria-selected={tab === k}
+                      onClick={() => {
+                        setTab(k);
+                        if (k !== 'daily') setTabRows([]);
+                      }}
+                      className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${
+                        tab === k ? 'border-teal-800 text-teal-900' : 'border-transparent text-zinc-600 hover:text-zinc-900'
+                      } ${focus}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="overflow-hidden rounded-md border border-zinc-300 bg-white lg:min-h-0 lg:flex-1">
+                  <div className="overflow-auto lg:h-full [scrollbar-width:thin]">
+                    {tab === 'daily' ? (
+                      rows.length === 0 ? (
+                        <div className="px-4 py-12 text-center text-sm text-zinc-500">
+                          No attendance records found for this date. Use Sync from device to retrieve records.
+                        </div>
+                      ) : (
+                        <table className="w-full min-w-[560px] text-left text-[13px]">
+                          <thead className={thead}>
+                            <tr>
+                              {['Emp ID', 'Device', 'Name', 'Check-in', 'Check-out', 'Hours', 'Punch', 'Status'].map((h) => (
+                                <th key={h} className={th}>
+                                  {h}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-200">
+                            {rows.map((r) => {
+                              const quiet = OFF.has(r.status);
+                              return (
+                                <tr key={r._id} className={`tabular-nums ${quiet ? 'bg-zinc-50 text-zinc-500' : 'text-zinc-800'}`}>
+                                  <td className={`${td} whitespace-nowrap font-medium`}>{r.employeeId}</td>
+                                  <td className={td}>{r.proximityId || '-'}</td>
+                                  <td className={td}>{r.name}</td>
+                                  <td className={`${td} whitespace-nowrap`}>{fmtTime(r.inTime)}</td>
+                                  <td className={`${td} whitespace-nowrap`}>{fmtTime(r.outTime)}</td>
+                                  <td className={td}>{r.hours ?? '-'}</td>
+                                  <td className={td}>{r.punches || '-'}</td>
+                                  <td className={td}>
+                                    {r.status ? (
+                                      <>
+                                        <span className={statusTone(r.status)}>
+                                          {r.status === 'Missing Out' ? 'Missing check-out' : r.status}
+                                        </span>
+                                        {r.holidayName && <div className="truncate text-xs text-zinc-500">{r.holidayName}</div>}
+                                      </>
+                                    ) : (
+                                      '-'
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      )
+                    ) : tabRows.length === 0 ? (
+                      <div className="px-4 py-12 text-center text-sm text-zinc-500">
+                        {tab === 'users' ? 'No employees found.' : 'No punch logs found for this date.'}
+                      </div>
+                    ) : tab === 'logs' ? (
+                      <table className="w-full text-left text-[13px]">
+                        <thead className={thead}>
+                          <tr>
+                            {['Device ID', 'Name', 'Timestamp'].map((h) => (
+                              <th key={h} className={th}>
+                                {h}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-200 text-zinc-800 tabular-nums">
+                          {tabRows.map((r) => (
+                            <tr key={r._id}>
+                              <td className={`${td} font-medium`}>{r.userId}</td>
+                              <td className={td}>{r.name || '-'}</td>
+                              <td className={`${td} whitespace-nowrap`}>{fmtDateTime(r.timestamp)}</td>
+                            </tr>
                           ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-zinc-200">
-                        {rows.map((r) => {
-                          const quiet = OFF.has(r.status);
-                          return (
-                            <tr key={r._id} className={`tabular-nums ${quiet ? 'bg-zinc-50 text-zinc-500' : 'text-zinc-800'}`}>
+                        </tbody>
+                      </table>
+                    ) : (
+                      <table className="w-full text-left text-[13px]">
+                        <thead className={thead}>
+                          <tr>
+                            {['Emp ID', 'Device ID', 'Name', 'Department'].map((h) => (
+                              <th key={h} className={th}>
+                                {h}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-200 text-zinc-800 tabular-nums">
+                          {tabRows.map((r) => (
+                            <tr key={r._id}>
                               <td className={`${td} font-medium`}>{r.employeeId}</td>
                               <td className={td}>{r.proximityId || '-'}</td>
                               <td className={td}>{r.name}</td>
-                              <td className={td}>{fmtTime(r.inTime)}</td>
-                              <td className={td}>{fmtTime(r.outTime)}</td>
-                              <td className={td}>{r.hours ?? '-'}</td>
-                              <td className={td}>{r.punches || '-'}</td>
-                              <td className={td}>
-                                {r.status ? (
-                                  <>
-                                    <span className={statusTone(r.status)}>
-                                      {r.status === 'Missing Out' ? 'Missing check-out' : r.status}
-                                    </span>
-                                    {r.holidayName && <div className="truncate text-xs text-zinc-500">{r.holidayName}</div>}
-                                  </>
-                                ) : (
-                                  '-'
-                                )}
-                              </td>
+                              <td className={td}>{r.department || '-'}</td>
                             </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  )
-                ) : tabRows.length === 0 ? (
-                  <div className="px-4 py-12 text-center text-sm text-zinc-500">
-                    {tab === 'users' ? 'No employees found.' : 'No punch logs found for this date.'}
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
                   </div>
-                ) : tab === 'logs' ? (
-                  <table className="w-full min-w-[480px] text-left text-sm">
-                    <thead className="border-b border-zinc-300 bg-zinc-50 text-zinc-500">
-                      <tr>
-                        {['Device ID', 'Name', 'Timestamp'].map((h) => (
-                          <th key={h} className={th}>
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-200 text-zinc-800 tabular-nums">
-                      {tabRows.map((r) => (
-                        <tr key={r._id}>
-                          <td className={`${td} font-medium`}>{r.userId}</td>
-                          <td className={td}>{r.name || '-'}</td>
-                          <td className={td}>{fmtDateTime(r.timestamp)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <table className="w-full min-w-[480px] text-left text-sm">
-                    <thead className="border-b border-zinc-300 bg-zinc-50 text-zinc-500">
-                      <tr>
-                        {['Emp ID', 'Device ID', 'Name', 'Department'].map((h) => (
-                          <th key={h} className={th}>
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-200 text-zinc-800 tabular-nums">
-                      {tabRows.map((r) => (
-                        <tr key={r._id}>
-                          <td className={`${td} font-medium`}>{r.employeeId}</td>
-                          <td className={td}>{r.proximityId || '-'}</td>
-                          <td className={td}>{r.name}</td>
-                          <td className={td}>{r.department || '-'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
+                </div>
               </div>
             </div>
           </div>
         </main>
       </div>
-
-      {/* Toast */}
-      {toast && (
-        <div
-          role="status"
-          className={`fixed bottom-4 right-4 z-50 max-w-sm rounded-md bg-zinc-900 px-4 py-2.5 text-sm text-white ${
-            toast.err ? 'border-l-4 border-red-500' : ''
-          }`}
-        >
-          {toast.text}
-        </div>
-      )}
     </div>
   );
 }
