@@ -239,7 +239,7 @@ export default function SettingsPage() {
     setMsg(null);
     try {
       setF(await api('/api/settings', { method: 'PUT', body: JSON.stringify(f) }));
-      setMsg({ type: 'ok', text: 'Settings saved. All attendance and OT calculations now use these values.' });
+      setMsg({ type: 'ok', text: 'Working-hour settings saved. Attendance and OT calculations now use these values.' });
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
       setMsg({ type: 'err', text: err.message });
