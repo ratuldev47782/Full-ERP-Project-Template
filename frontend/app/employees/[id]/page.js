@@ -5,10 +5,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Menu, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { IBM_Plex_Sans } from 'next/font/google';
 import SideNavBar from '../../components/SideNavBar';
-import DeviceStatus from '../../components/DeviceStatus';
 import MonthlyView from '../../components/MonthlyView';
 import { formatDateTime, useTimeFormat } from '../../timeFormat';
 
@@ -134,48 +133,14 @@ export default function EmployeeDetail() {
       <SideNavBar
         collapsed={collapsed}
         onToggle={() => setCollapsed((c) => !c)}
+        onOpen={() => setMobileOpen(true)}
         mobileOpen={mobileOpen}
         onClose={() => setMobileOpen(false)}
         onLogout={logout}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-zinc-300 bg-white px-4 md:px-6">
-          <div className="flex min-w-0 items-center gap-2">
-            <button
-              onClick={() => setMobileOpen(true)}
-              className={`rounded-md p-1.5 text-zinc-600 hover:bg-zinc-100 md:hidden ${focus}`}
-              aria-label="Open menu"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <button
-              onClick={() => setCollapsed((c) => !c)}
-              className={`hidden rounded-md p-1.5 text-zinc-600 hover:bg-zinc-100 md:block ${focus}`}
-              aria-label="Toggle sidebar"
-              title="Toggle sidebar"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <h1 className="truncate text-sm font-semibold text-zinc-900">Attendance</h1>
-          </div>
-
-          <div className="flex shrink-0 items-center gap-3">
-            <DeviceStatus />
-            <span className="hidden text-sm text-zinc-500 tabular-nums sm:inline">
-              Last synced {fmtSyncTime(lastSync) || 'not yet'}
-            </span>
-            <button onClick={() => sync(false)} disabled={syncing} className={`${btnSecondary} flex items-center gap-2 py-1.5`}>
-              <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin motion-reduce:animate-none' : ''}`} />
-              {syncing ? 'Syncing' : 'Sync'}
-            </button>
-            <button onClick={logout} className={linkBtn}>
-              Log out
-            </button>
-          </div>
-        </header>
-
-        <main className="flex-1 overflow-auto p-4 md:p-8">
+                <main className="pt-16 flex-1 overflow-auto p-4 md:p-8">
           <div className="max-w-4xl">
             <Link href="/employees" className={`mb-4 inline-block ${linkBtn}`}>
               Back to employees

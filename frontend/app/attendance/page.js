@@ -4,20 +4,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import {
-  Search,
-  Menu,
-  RefreshCw,
-  Download,
-  Printer,
-  Pencil,
-  Check,
-  X,
-  Loader2,
-} from 'lucide-react';
+import { Search, RefreshCw, Download, Printer, Pencil, Check, X, Loader2 } from 'lucide-react';
 import { IBM_Plex_Sans } from 'next/font/google';
 import SideNavBar from '../components/SideNavBar';
-import DeviceStatus from '../components/DeviceStatus';
 import { formatTime, useTimeFormat } from '../timeFormat';
 
 const plex = IBM_Plex_Sans({ subsets: ['latin'], weight: ['400', '500', '600'], display: 'swap' });
@@ -322,6 +311,13 @@ export default function AttendanceRegisterPage() {
     }
   };
 
+  // Sidebar-er Sync button theke sync hole register abar load hoy
+  useEffect(() => {
+    const h = () => load();
+    window.addEventListener('attendance:synced', h);
+    return () => window.removeEventListener('attendance:synced', h);
+  }, [load]);
+
   // Filter badalale purono row-er editor bondho
   useEffect(() => {
     setEditing(null);
@@ -421,45 +417,14 @@ export default function AttendanceRegisterPage() {
       <SideNavBar
         collapsed={collapsed}
         onToggle={() => setCollapsed((c) => !c)}
+        onOpen={() => setMobileOpen(true)}
         mobileOpen={mobileOpen}
         onClose={() => setMobileOpen(false)}
         onLogout={logout}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-zinc-300 bg-white px-4 md:px-6">
-          <div className="flex min-w-0 items-center gap-2">
-            <button
-              onClick={() => setMobileOpen(true)}
-              className={`rounded-md p-1.5 text-zinc-600 hover:bg-zinc-100 md:hidden ${focusRing}`}
-              aria-label="Open menu"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <button
-              onClick={() => setCollapsed((c) => !c)}
-              className={`hidden rounded-md p-1.5 text-zinc-600 hover:bg-zinc-100 md:block ${focusRing}`}
-              aria-label="Toggle sidebar"
-              title="Toggle sidebar"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <h1 className="truncate text-sm font-semibold text-zinc-900">Attendance register</h1>
-          </div>
-
-          <div className="flex shrink-0 items-center gap-3">
-            <DeviceStatus />
-            <button onClick={sync} disabled={syncing} className={`${btnSecondary} flex items-center gap-2`}>
-              <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin motion-reduce:animate-none' : ''}`} />
-              {syncing ? 'Syncing' : 'Sync'}
-            </button>
-            <button onClick={logout} className={linkBtn}>
-              Log out
-            </button>
-          </div>
-        </header>
-
-        <main className="flex-1 overflow-auto p-3 md:p-4">
+                <main className="pt-16 flex-1 overflow-auto p-3 md:p-4">
           <div className="w-full">
             {/* Filters */}
             <div className="rounded-md border border-zinc-300 bg-white px-3 py-3">

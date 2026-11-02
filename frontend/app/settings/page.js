@@ -5,9 +5,8 @@
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { IBM_Plex_Sans } from 'next/font/google';
-import { Menu, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import SideNavBar from '../components/SideNavBar';
-import DeviceStatus from '../components/DeviceStatus';
 import { formatDateTime, formatClock, useTimeFormat } from '../timeFormat';
 
 const plex = IBM_Plex_Sans({ subsets: ['latin'], weight: ['400', '500', '600'] });
@@ -267,55 +266,14 @@ export default function SettingsPage() {
       <SideNavBar
         collapsed={collapsed}
         onToggle={() => setCollapsed((c) => !c)}
+        onOpen={() => setMobileOpen(true)}
         mobileOpen={mobileOpen}
         onClose={() => setMobileOpen(false)}
         onLogout={logout}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-zinc-300 bg-white px-4 md:px-6">
-          <div className="flex min-w-0 items-center gap-3">
-            <button
-              onClick={() => setMobileOpen(true)}
-              className="rounded p-1.5 text-zinc-600 hover:bg-zinc-100 md:hidden"
-              aria-label="Open menu"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <button
-              onClick={() => setCollapsed((c) => !c)}
-              className="hidden rounded p-1.5 text-zinc-600 hover:bg-zinc-100 md:block"
-              title="Toggle sidebar"
-              aria-label="Toggle sidebar"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <h1 className="truncate text-base font-semibold text-zinc-900">Settings</h1>
-          </div>
-
-          <div className="flex shrink-0 items-center gap-3">
-            <DeviceStatus />
-            <span className="hidden text-xs text-zinc-500 sm:block">
-              Last synced <span className="tabular-nums text-zinc-700">{fmtSyncTime(lastSync) || 'never'}</span>
-            </span>
-
-            <button
-              onClick={() => sync(false)}
-              disabled={syncing}
-              title="Sync from device"
-              className="flex items-center gap-1.5 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-60"
-            >
-              <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">{syncing ? 'Syncing…' : 'Sync'}</span>
-            </button>
-
-            <button onClick={logout} className="text-sm font-medium text-zinc-600 hover:text-zinc-900">
-              Log out
-            </button>
-          </div>
-        </header>
-
-        <main className="flex-1 overflow-auto">
+                <main className="pt-16 flex-1 overflow-auto md:pt-0">
           <div className="mx-auto max-w-4xl p-4 md:p-8">
             <div className="mb-6">
               <h2 className="text-2xl font-semibold tracking-tight text-zinc-900">Working hours</h2>

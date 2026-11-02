@@ -4,9 +4,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Pencil, Trash2, CheckCircle2, AlertCircle, Search, Menu, LogOut, RefreshCw } from 'lucide-react';
+import { Pencil, Trash2, CheckCircle2, AlertCircle, Search, LogOut, RefreshCw } from 'lucide-react';
 import SideNavBar from '../components/SideNavBar';
-import DeviceStatus from '../components/DeviceStatus';
 import { formatDateTime, useTimeFormat } from '../timeFormat';
 import { confirmDialog } from '../../lib/dialog';
 
@@ -327,60 +326,14 @@ export default function LeavesPage() {
       <SideNavBar
         collapsed={collapsed}
         onToggle={() => setCollapsed((c) => !c)}
+        onOpen={() => setMobileOpen(true)}
         mobileOpen={mobileOpen}
         onClose={() => setMobileOpen(false)}
         onLogout={logout}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 shadow-sm md:px-6">
-          <div className="flex min-w-0 items-center gap-3">
-            <button
-              onClick={() => setMobileOpen(true)}
-              className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 md:hidden"
-              aria-label="Open menu"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <button
-              onClick={() => setCollapsed((c) => !c)}
-              className="hidden rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 md:block"
-              title="Toggle sidebar"
-              aria-label="Toggle sidebar"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <h1 className="truncate text-base font-semibold text-slate-800">Leave Management</h1>
-          </div>
-
-          <div className="flex shrink-0 items-center gap-2">
-            <DeviceStatus />
-            <div className="hidden text-right leading-tight sm:block">
-              <div className="text-[10px] uppercase tracking-wide text-slate-400">Last synced</div>
-              <div className="text-xs font-medium text-slate-600">{fmtSyncTime(lastSync) || 'Not yet'}</div>
-            </div>
-
-            <button
-              onClick={() => sync(false)}
-              disabled={syncing}
-              title="Sync from Device"
-              className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60"
-            >
-              <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">{syncing ? 'Syncing...' : 'Sync'}</span>
-            </button>
-
-            <button
-              onClick={logout}
-              className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-500 hover:text-white"
-            >
-              <LogOut className="h-4 w-4" />
-              <span className="hidden sm:inline">Logout</span>
-            </button>
-          </div>
-        </header>
-
-        <main className="flex-1 overflow-auto p-4 md:p-6">
+                <main className="pt-16 flex-1 overflow-auto p-4 md:p-6">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-slate-800">Leave Management (CL / SL / EL)</h2>
