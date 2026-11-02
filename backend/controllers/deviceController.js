@@ -81,16 +81,27 @@ function withDevice(fn, tries = 3) {
 
 const getInfo = () => withDevice((zk) => zk.getInfo(), 1);
 
+// Device-er general info: { userCounts, logCounts, logCapacity }.
+// Settings-er storage board ei data diye-i capacity ar log count dekhay.
+async function readDeviceInfo(zk) {
+  try {
+    const info = await zk.getInfo();
+    return info && typeof info === 'object' ? info : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+const logCountOf = (info) => {
+  const n = Number(info && info.logCounts);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+};
+
 // Device-e koto gulo attendance log ache (na janle null). getInfo kom shomoy ney.
 // Empty device-e getAttendances() call korle library timeout kore / hang kore,
 // tai download korar age ei check ta kori.
 async function readDeviceLogCount(zk) {
-  try {
-    const n = Number((await zk.getInfo() || {}).logCounts);
-    return Number.isFinite(n) && n >= 0 ? n : null;
-  } catch (e) {
-    return null;
-  }
+  return logCountOf(await readDeviceInfo(zk));
 }
 
 // ---------- Normal sync (kichu delete hoy na) ----------
@@ -124,8 +135,9 @@ async function syncDevice() {
   return withDevice(async (zk) => {
     // Device-e kono log na thakle attendance download korar dorkar nai.
     // (Empty device-e library-er read long time wait kore / error dey - tai age-i check.)
-    const deviceLogs = await readDeviceLogCount(zk);
-    if (deviceLogs === 0) return { logs: 0, written: 0, deviceLogs: 0 };
+    const info = await readDeviceInfo(zk);
+    const deviceLogs = logCountOf(info);
+    if (deviceLogs === 0) return { logs: 0, written: 0, deviceLogs: 0, info };
 
     const res = await zk.getAttendances();
     // adhuro read (packet timeout) hole retry hobe, adhuro data save hobe na
@@ -163,7 +175,7 @@ async function syncDevice() {
         )
       : 0;
 
-    return { logs: logs.length, written, deviceLogs };
+    return { logs: logs.length, written, deviceLogs, info };
   });
 }
 
@@ -273,8 +285,10 @@ const STATUS_TTL = 30000;
 let statusCache = { at: 0, data: null };
 let statusPromise = null;
 
-function checkDeviceStatus() {
-  if (statusCache.data && Date.now() - statusCache.at < STATUS_TTL) {
+// fresh=true mane cache bad diye device theke notun kore pora hoy
+// (Settings-er Refresh button eita use kore).
+function checkDeviceStatus(fresh = false) {
+  if (!fresh && statusCache.data && Date.now() - statusCache.at < STATUS_TTL) {
     return Promise.resolve(statusCache.data);
   }
   if (!statusPromise) {
@@ -301,10 +315,16 @@ function runSync() {
   if (!syncPromise) {
     syncPromise = syncDevice()
       .then((r) => {
-        // sync sofol mane device connected, status cache fresh kore dao
+        // sync sofol mane device connected, status cache fresh kore dao.
+        // sync-er somoy pora info (log count / capacity) o cache-e rakhi.
         statusCache = {
           at: Date.now(),
-          data: { connected: true, ip: process.env.ZK_IP, port: process.env.ZK_PORT },
+          data: {
+            connected: true,
+            ip: process.env.ZK_IP,
+            port: process.env.ZK_PORT,
+            info: r.info || null,
+          },
         };
         return r;
       })
@@ -319,7 +339,8 @@ const isSyncing = () => Boolean(syncPromise);
 
 // ---------- Route handlers ----------
 async function status(req, res) {
-  res.json(await checkDeviceStatus());
+  // ?fresh=1 -> cache bad diye device theke notun kore pora hoy
+  res.json(await checkDeviceStatus(req.query.fresh === '1'));
 }
 
 async function sync(req, res) {

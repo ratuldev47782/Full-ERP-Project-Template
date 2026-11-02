@@ -38,12 +38,22 @@ const menu = [
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
+/* Short date + time for the collapsed sidebar, e.g. { date: '2 Nov', time: '14:05' } */
+function shortStamp(iso) {
+  const d = new Date(iso);
+  if (!iso || Number.isNaN(d.getTime())) return null;
+  return {
+    date: d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
+    time: d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+  };
+}
+
 /* ---------- Device status + sync ---------- */
 
 function DevicePanel({ showLabels }) {
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState(null);
-  const [msg, setMsg] = useState(null); // { err, text }
+  const [msg, setMsg] = useState(null); // { err, text, short }
 
   useEffect(() => {
     setLastSync(localStorage.getItem(LAST_SYNC_KEY));
@@ -86,31 +96,66 @@ function DevicePanel({ showLabels }) {
       window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: { at, result: data } }));
 
       const written = data.written ?? 0;
-      setMsg({ text: `Synced: ${written} new punch${written === 1 ? '' : 'es'}` });
+      setMsg({
+        text: `Synced: ${written} new punch${written === 1 ? '' : 'es'}`,
+        short: `+${written} new`,
+      });
     } catch (e) {
-      setMsg({ err: true, text: `Sync failed: ${e.message}` });
+      setMsg({ err: true, text: `Sync failed: ${e.message}`, short: 'Failed' });
     } finally {
       setSyncing(false);
     }
   }, [syncing]);
 
+  /* Collapsed: icon button + download log in small text */
   if (!showLabels) {
+    const stamp = shortStamp(lastSync);
+    const fullLog = lastSync ? `Last sync ${formatDateTime(lastSync)}` : 'Never synced';
+
     return (
-      <div className="flex flex-col items-center gap-2 border-t border-slate-200 px-3 py-3">
+      <div className="flex flex-col items-center gap-2 border-t border-slate-200 px-1 py-3">
         <DeviceStatus compact />
         <button
           onClick={sync}
           disabled={syncing}
-          title="Sync from device"
-          aria-label="Sync from device"
+          title="Download / Sync"
+          aria-label="Download / Sync"
           className="rounded-full p-2 text-slate-600 transition hover:bg-slate-100 disabled:opacity-60"
         >
           <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin motion-reduce:animate-none' : ''}`} />
         </button>
+
+        {/* Download log */}
+        <div className="w-full text-center leading-tight" title={msg ? msg.text : fullLog} aria-live="polite">
+          {syncing ? (
+            <p className="text-[9px] font-medium text-blue-600">Downloading</p>
+          ) : (
+            <>
+              <p className="text-[9px] text-slate-400">Last sync</p>
+              {stamp ? (
+                <>
+                  <p className="text-[9px] text-slate-500">{stamp.date}</p>
+                  <p className="text-[9px] font-medium text-slate-600">{stamp.time}</p>
+                </>
+              ) : (
+                <p className="text-[9px] text-slate-500">never</p>
+              )}
+            </>
+          )}
+          {msg && !syncing && (
+            <p
+              role="status"
+              className={`mt-0.5 text-[9px] font-semibold ${msg.err ? 'text-red-600' : 'text-emerald-700'}`}
+            >
+              {msg.short}
+            </p>
+          )}
+        </div>
       </div>
     );
   }
 
+  /* Expanded */
   return (
     <div className="border-t border-slate-200 px-3 py-3">
       <div className="rounded-xl bg-slate-50 p-3">
@@ -120,11 +165,11 @@ function DevicePanel({ showLabels }) {
         <button
           onClick={sync}
           disabled={syncing}
-          title="Sync from device"
+          title="Download / Sync"
           className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60"
         >
           <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin motion-reduce:animate-none' : ''}`} />
-          {syncing ? 'Syncing...' : 'Sync from device'}
+          {syncing ? 'Downloading...' : 'Download / Sync'}
         </button>
 
         <p className="mt-1.5 truncate text-[11px] text-slate-500" title={lastSync ? formatDateTime(lastSync) : 'Never synced'}>

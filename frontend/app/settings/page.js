@@ -7,6 +7,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { IBM_Plex_Sans } from 'next/font/google';
 import { RefreshCw } from 'lucide-react';
 import SideNavBar from '../components/SideNavBar';
+import DeviceStorage from '../components/DeviceStorage';
 import { formatDateTime, formatClock, useTimeFormat } from '../timeFormat';
 
 const plex = IBM_Plex_Sans({ subsets: ['latin'], weight: ['400', '500', '600'] });
@@ -293,6 +294,8 @@ export default function SettingsPage() {
                 {msg.text}
               </div>
             )}
+
+            <DeviceStorage />
 
             {!f ? (
               !msg && <div className="h-72 animate-pulse rounded-md border border-zinc-200 bg-white" />
