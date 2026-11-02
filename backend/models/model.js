@@ -10,6 +10,7 @@ const attendanceSchema = new mongoose.Schema({
   device: String,
 });
 attendanceSchema.index({ userId: 1, timestamp: 1, device: 1 }, { unique: true }); // একই পাঞ্চ দুইবার সেভ হবে না
+attendanceSchema.index({ device: 1, timestamp: -1 }); // sync: latest punch lookup (findOne + sort) fast
 const Attendance = mongoose.model('Attendance', attendanceSchema);
 
 // ---- DeviceUser ----

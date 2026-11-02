@@ -9,23 +9,52 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Device ek connection chhere dite shomoy nay. Duto connection-er majhe ei gap rakhi.
 const GAP_MS = 2000;
+const CONNECT_TIMEOUT_MS = 15000; // device offline thakle createSocket() hang korte pare
+const RESPONSE_TIMEOUT_MS = 120000;
+const CLOSE_TIMEOUT_MS = 5000;
 let lastEnd = 0;
+
+// Socket jodi thik moto bondho na hoy (timeout / unreachable), tokhon force close.
+// Eta na korle porer sync purono half-open session-e atke thakte pare.
+async function closeQuietly(zk) {
+  try {
+    await Promise.race([zk.disconnect(), sleep(CLOSE_TIMEOUT_MS)]);
+  } catch (e) {}
+  for (const lib of [zk.zklibTcp, zk.zklibUdp]) {
+    if (!lib) continue;
+    try { if (lib.socket) lib.socket.destroy(); } catch (e) {}
+    lib.socket = null;
+  }
+}
 
 async function doWithDevice(fn) {
   const wait = lastEnd + GAP_MS - Date.now();
   if (wait > 0) await sleep(wait);
 
   const zk = new ZKLib(process.env.ZK_IP, Number(process.env.ZK_PORT || 4370), 60000, 4000);
-  let timer;
+  let connectTimer;
+  let responseTimer;
   try {
-    await zk.createSocket();
-    const limit = new Promise((_, rej) => {
-      timer = setTimeout(() => rej(new Error('Device response timeout')), 120000);
-    });
-    return await Promise.race([fn(zk), limit]);
+    // library-er createSocket() shob shomoy settle kore na, tai bound kora hoy
+    await Promise.race([
+      zk.createSocket(),
+      new Promise((_, rej) => {
+        connectTimer = setTimeout(() => rej(new Error('Device connection timeout')), CONNECT_TIMEOUT_MS);
+      }),
+    ]);
+
+    const work = fn(zk);
+    work.catch(() => {}); // timeout-er por background promise reject korle unhandled na hoy
+    return await Promise.race([
+      work,
+      new Promise((_, rej) => {
+        responseTimer = setTimeout(() => rej(new Error('Device response timeout')), RESPONSE_TIMEOUT_MS);
+      }),
+    ]);
   } finally {
-    clearTimeout(timer);
-    try { await zk.disconnect(); } catch (e) {}
+    clearTimeout(connectTimer);
+    clearTimeout(responseTimer);
+    await closeQuietly(zk);
     lastEnd = Date.now();
   }
 }
@@ -40,10 +69,11 @@ function withDevice(fn, tries = 3) {
       catch (e) {
         last = e;
         console.log(`Device attempt ${i}/${tries} failed:`, errMsg(e));
-        if (i < tries) await sleep(3000);
+        // porer try te aro beshi shomoy dei, jate device purono session chhere dite pare
+        if (i < tries) await sleep(3000 * i);
       }
     }
-    throw new Error(errMsg(last));
+    throw new Error(`${errMsg(last)}${tries > 1 ? ` (after ${tries} attempts)` : ''}`);
   });
   queue = run.catch(() => {});
   return run;
@@ -52,9 +82,47 @@ function withDevice(fn, tries = 3) {
 const getInfo = () => withDevice((zk) => zk.getInfo(), 1);
 
 // ---------- Normal sync (kichu delete hoy na) ----------
+// Boro device history ek command-e likhle MongoDB command size limit-e dhaka khete pare,
+// tai chhoto batch-e likhi.
+const UPSERT_BATCH = 500;
+
+const isDupKey = (e) =>
+  e && (e.code === 11000 || (Array.isArray(e.writeErrors) && e.writeErrors.length > 0 && e.writeErrors.every((w) => w.code === 11000)));
+
+async function upsertAttendance(docs) {
+  let inserted = 0;
+  for (let i = 0; i < docs.length; i += UPSERT_BATCH) {
+    const batch = docs.slice(i, i + UPSERT_BATCH);
+    try {
+      const r = await Attendance.bulkWrite(
+        batch.map((doc) => ({ updateOne: { filter: doc, update: { $setOnInsert: doc }, upsert: true } })),
+        { ordered: false }
+      );
+      inserted += r.upsertedCount || 0;
+    } catch (e) {
+      // duplicate key (same punch duibar) hole baki batch bondho koro na
+      if (!isDupKey(e)) throw e;
+      inserted += (e.result && e.result.upsertedCount) || 0;
+    }
+  }
+  return inserted;
+}
+
 async function syncDevice() {
   return withDevice(async (zk) => {
-    const logs = (await zk.getAttendances()).data || [];
+    // Device-e kono log na thakle attendance download korar dorkar nai.
+    // (Empty device-e library-er read 10s wait kore / error dey - tai age-i check.)
+    let deviceLogs = null;
+    try {
+      const n = Number((await zk.getInfo() || {}).logCounts);
+      if (Number.isFinite(n) && n >= 0) deviceLogs = n;
+    } catch (e) {}
+    if (deviceLogs === 0) return { logs: 0, written: 0, deviceLogs: 0 };
+
+    const res = await zk.getAttendances();
+    // adhuro read (packet timeout) hole retry hobe, adhuro data save hobe na
+    if (res && res.err) throw res.err;
+    const logs = (res && res.data) || [];
 
     // only write records from the last stored time (minus 1 day safety)
     const last = await Attendance.findOne({ device: process.env.ZK_IP })
@@ -62,28 +130,22 @@ async function syncDevice() {
       .select('timestamp')
       .lean();
     const since = last ? last.timestamp.getTime() - 24 * 3600 * 1000 : 0;
-    const fresh = logs.filter((l) => new Date(l.recordTime).getTime() >= since);
+    const fresh = logs.filter((l) => {
+      const t = new Date(l.recordTime).getTime();
+      return Number.isFinite(t) && t >= since;
+    });
 
-    if (fresh.length) {
-      await Attendance.bulkWrite(
-        fresh.map((l) => {
-          const doc = {
+    const written = fresh.length
+      ? await upsertAttendance(
+          fresh.map((l) => ({
             userId: String(l.deviceUserId),
             timestamp: new Date(l.recordTime),
             device: process.env.ZK_IP,
-          };
-          return {
-            updateOne: {
-              filter: doc,
-              update: { $setOnInsert: doc },
-              upsert: true,
-            },
-          };
-        }),
-        { ordered: false }
-      );
-    }
-    return { logs: logs.length, written: fresh.length };
+          }))
+        )
+      : 0;
+
+    return { logs: logs.length, written, deviceLogs };
   });
 }
 
@@ -125,11 +187,7 @@ async function findMissing(docs) {
   return docs.filter((d) => !have.has(`${d.userId}|${d.timestamp.getTime()}`));
 }
 
-const uploadDocs = (docs) =>
-  Attendance.bulkWrite(
-    docs.map((doc) => ({ updateOne: { filter: doc, update: { $setOnInsert: doc }, upsert: true } })),
-    { ordered: false }
-  );
+const uploadDocs = (docs) => upsertAttendance(docs);
 
 // STEP 1: shudhu upload + verify. Device theke kichu delete hoy na.
 async function prepareClear() {
