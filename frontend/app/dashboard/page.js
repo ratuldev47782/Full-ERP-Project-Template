@@ -7,7 +7,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { RefreshCw, Trash2 } from 'lucide-react';
 import { IBM_Plex_Sans } from 'next/font/google';
 import SideNavBar from '../components/SideNavBar';
-import { formatDateTime, formatTime, useTimeFormat } from '../timeFormat';
+import { formatDateTime, formatDuration, formatHours, formatTime, useTimeFormat } from '../timeFormat';
 import { confirmDialog } from '../../lib/dialog';
 
 const plex = IBM_Plex_Sans({ subsets: ['latin'], weight: ['400', '500', '600'], display: 'swap' });
@@ -99,9 +99,8 @@ function tally(rows) {
     else if (r.status === 'Absent') t.absent++;
     else if (LEAVES.has(r.status)) t.leave++;
     else if (OFF.has(r.status)) t.off++;
-    t.ot += (r.otFinalMinutes || 0) / 60;
+    t.ot += r.otFinalMinutes || 0;
   }
-  t.ot = Number(t.ot.toFixed(1));
   t.counted = t.present + t.missing + t.absent + t.leave; // working-day-te jader hisab hoy
   t.attended = t.present + t.missing;
   t.rate = t.counted ? Number(((t.attended / t.counted) * 100).toFixed(1)) : null;
@@ -439,7 +438,7 @@ export default function Dashboard() {
         ['Missing out', today.missing, today.missing > 0 ? 'text-red-700' : 'text-zinc-900'],
         ['On leave', today.leave, 'text-zinc-900'],
         ['Holiday / off', today.off, 'text-zinc-900'],
-        ['OT hours', today.ot, 'text-teal-800'],
+        ['OT hours', formatDuration(today.ot), 'text-teal-800'],
         ['Attendance', today.rate == null ? '-' : `${today.rate}%`, 'text-zinc-900'],
       ]
     : [];
@@ -636,7 +635,7 @@ export default function Dashboard() {
                                   <td className={td}>{r.name}</td>
                                   <td className={`${td} whitespace-nowrap`}>{fmtTime(r.inTime)}</td>
                                   <td className={`${td} whitespace-nowrap`}>{fmtTime(r.outTime)}</td>
-                                  <td className={td}>{r.hours ?? '-'}</td>
+                                  <td className={td}>{formatHours(r.hours)}</td>
                                   <td className={td}>{r.punches || '-'}</td>
                                   <td className={td}>
                                     {r.status ? (

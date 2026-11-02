@@ -34,6 +34,15 @@ const hhmmToMin = (t) => {
   return h * 60 + m;
 };
 const fmtHM = (min) => `${pad(Math.floor(min / 60))}:${pad(min % 60)}`;
+const formatDuration = (min) => {
+  const total = Math.max(0, Math.round(Number(min) || 0));
+  const hours = Math.floor(total / 60);
+  const minutes = total % 60;
+  if (!hours) return `${minutes}m`;
+  return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+};
+const formatHours = (hours) =>
+  hours == null || !Number.isFinite(Number(hours)) ? '-' : formatDuration(Number(hours) * 60);
 
 function monthInfo(month) {
   const [y, m] = month.split('-').map(Number);
@@ -426,8 +435,6 @@ const shortDate = (s) => {
   const [y, m, d] = s.split('-');
   return `${d}-${MON[Number(m) - 1]}-${y.slice(2)}`;
 };
-const hms = (min) => `${pad(Math.floor(min / 60))}:${pad(min % 60)}:00`;
-
 function formatDhakaTime(value, timeFormat = '24-hour') {
   const time = dhakaTime(value);
   if (timeFormat === '24-hour') return time;
@@ -551,7 +558,7 @@ function buildPdf(res, { report, settings, month, timeFormat = '24-hour' }) {
       shortDate(d.date),
       d.inTime ? formatDhakaTime(d.inTime, timeFormat) : (timeFormat === '12-hour' ? '12:00:00 AM' : '00:00:00'),
       d.outTime ? formatDhakaTime(d.outTime, timeFormat) : (timeFormat === '12-hour' ? '12:00:00 AM' : '00:00:00'),
-      hms(d.otFinalMinutes),
+      formatDuration(d.otFinalMinutes),
       code,
       special,
     ];
@@ -565,7 +572,7 @@ function buildPdf(res, { report, settings, month, timeFormat = '24-hour' }) {
 
   // Total OT (shudhu number, jemon 36)
   const otX = L + cols[0][1] + cols[1][1] + cols[2][1];
-  cell(otX, yy, cols[3][1], rH, Number(sum.otHours.toFixed(2)), { bold: true, fill: '#d9d9d9', size: 8 });
+  cell(otX, yy, cols[3][1], rH, formatDuration(sum.otFinalMinutes), { bold: true, fill: '#d9d9d9', size: 8 });
   yy += rH + 8;
 
   // ---- Monthly summary (bottom right, 5 box) ----
@@ -695,7 +702,7 @@ function buildRegisterPdf(res, { rows, summary, settings, from, to, label, timeF
       doc.addPage();
       y = drawHead(drawContd());
     }
-    const ot = r.status === 'Present' ? fmtHM(r.otFinalMinutes) : '-';
+    const ot = r.status === 'Present' ? formatDuration(r.otFinalMinutes) : '-';
     const vals = [
       shortDate(r.date),
       r.employeeId,
@@ -703,7 +710,7 @@ function buildRegisterPdf(res, { rows, summary, settings, from, to, label, timeF
       `${r.name}${r.edited ? ' *' : ''}`,
       r.inTime ? formatDhakaTime(r.inTime, timeFormat) : '-',
       r.outTime ? formatDhakaTime(r.outTime, timeFormat) : '-',
-      r.hours != null ? Number(r.hours).toFixed(2) : '-',
+      formatHours(r.hours),
       r.punches || '-',
       ot,
       r.status || '-',
@@ -726,7 +733,7 @@ function buildRegisterPdf(res, { rows, summary, settings, from, to, label, timeF
     }
     const total = [
       'TOTAL', '', '', `${summary.rows} record${summary.rows === 1 ? '' : 's'}`, '', '',
-      summary.totalHours, '', fmtHM(summary.otFinalMinutes), '',
+      formatHours(summary.totalHours), '', formatDuration(summary.otFinalMinutes), '',
     ];
     total.forEach((v, i) => {
       cell(colX[i], y, cols[i][1], ROW_H, v, { bold: true, fill: '#d9d9d9', size: 7.5, align: i === 3 ? 'left' : 'center' });
@@ -747,7 +754,7 @@ function buildRegisterPdf(res, { rows, summary, settings, from, to, label, timeF
   y += 13;
   doc.font('Helvetica').fontSize(8.5)
     .text(
-      `Total hours ${summary.totalHours}   |   Total overtime ${fmtHM(summary.otFinalMinutes)}   |   * check-in / check-out adjusted manually`,
+      `Total hours ${formatHours(summary.totalHours)}   |   Total overtime ${formatDuration(summary.otFinalMinutes)}   |   * check-in / check-out adjusted manually`,
       L, y, { width: CW, lineBreak: false }
     );
 

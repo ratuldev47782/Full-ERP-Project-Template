@@ -73,3 +73,17 @@ export function formatClock(value) {
   if (readTimeFormat() === '24-hour') return `${match[1]}:${match[2]}`;
   return `${String(hour % 12 || 12).padStart(2, '0')}:${match[2]} ${hour < 12 ? 'AM' : 'PM'}`;
 }
+
+export function formatDuration(minutes) {
+  if (minutes == null || !Number.isFinite(Number(minutes))) return '-';
+  const totalMinutes = Math.max(0, Math.round(Number(minutes)));
+  const hours = Math.floor(totalMinutes / 60);
+  const remainingMinutes = totalMinutes % 60;
+  if (!hours) return `${remainingMinutes}m`;
+  return remainingMinutes ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+}
+
+export function formatHours(hours) {
+  if (hours == null || !Number.isFinite(Number(hours))) return '-';
+  return formatDuration(Number(hours) * 60);
+}

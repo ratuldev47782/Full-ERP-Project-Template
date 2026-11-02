@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from 'react';
 import { Download, Printer, Loader2, Pencil } from 'lucide-react';
-import { formatTime, useTimeFormat } from '../timeFormat';
+import { formatDuration, formatHours, formatTime, useTimeFormat } from '../timeFormat';
 
 const API = process.env.NEXT_PUBLIC_API || 'http://localhost:5000';
 const SYNC_EVENT = 'attendance:synced';
@@ -287,7 +287,7 @@ function EditDayModal({ empId, day, onClose, onSaved }) {
               inputMode="numeric"
               className={`${inputCls} w-full`}
             />
-            <p className={hint}>Auto calculation: {fmtHM(day.autoOtMinutes)}</p>
+            <p className={hint}>Auto calculation: {formatDuration(day.autoOtMinutes)}</p>
             <p className={hint}>When you enter overtime, Hours becomes regular hours plus this overtime.</p>
           </div>
 
@@ -390,10 +390,8 @@ export default function MonthlyView({ id }) {
     }
   };
 
-  const num = (n) => Number(Number(n || 0).toFixed(2));
-  const otHours = s ? num(s.otHours) : 0;
   // General hours = regular working hours (OT bad)
-  const generalHours = data ? num(data.days.reduce((a, d) => a + (d.regularMinutes || 0), 0) / 60) : 0;
+  const generalHours = data ? formatHours(data.days.reduce((a, d) => a + (d.regularMinutes || 0), 0) / 60) : '-';
   const strong = 'text-zinc-900';
   const cells = s
     ? [
@@ -403,7 +401,7 @@ export default function MonthlyView({ id }) {
         ['CL', s.cl, strong],
         ['SL', s.sl, strong],
         ['EL', s.el, strong],
-        ['OT hours', otHours, 'text-teal-800'],
+        ['OT hours', s ? formatDuration(s.otFinalMinutes) : '-', 'text-teal-800'],
         ['General hours', generalHours, strong],
       ]
     : [];
@@ -469,7 +467,7 @@ export default function MonthlyView({ id }) {
             </div>
             <p className="mt-2 text-sm text-zinc-500 tabular-nums">
               Present includes {s.missingOut} day{s.missingOut === 1 ? '' : 's'} with a missing check-out. Holiday and weekend: {s.holidayTotal} days.
-              General hours exclude overtime. Total hours with overtime: {num(s.totalHours)}.
+              General hours exclude overtime. Total hours with overtime: {formatHours(s.totalHours)}.
             </p>
           </div>
         )}
@@ -505,17 +503,17 @@ export default function MonthlyView({ id }) {
                     <td className={td}>{dayName(d.date)}</td>
                     <td className={td}>{fmtTime(d.inTime)}</td>
                     <td className={td}>{fmtTime(d.outTime)}</td>
-                    <td className={td}>{d.hours ?? '-'}</td>
+                    <td className={td}>{formatHours(d.hours)}</td>
                     <td className={td}>
                       {d.status === 'Present' ? (
                         <>
-                          <div className="font-medium">{fmtHM(d.otFinalMinutes)}</div>
+                          <div className="font-medium">{formatDuration(d.otFinalMinutes)}</div>
                           {d.manualOt ? (
                             <div className="text-xs text-teal-800">manual</div>
                           ) : (
                             d.otActualMinutes > 0 &&
                             d.otActualMinutes !== d.otFinalMinutes && (
-                              <div className="text-xs text-zinc-500">actual {fmtHM(d.otActualMinutes)}</div>
+                              <div className="text-xs text-zinc-500">actual {formatDuration(d.otActualMinutes)}</div>
                             )
                           )}
                         </>
@@ -574,11 +572,11 @@ export default function MonthlyView({ id }) {
                     Total
                   </td>
                   <td className={`${td} font-semibold`}>
-                    {num(s.totalHours)}
+                    {formatHours(s.totalHours)}
                     <span className="block text-xs font-normal text-zinc-500">total hours</span>
                   </td>
                   <td className={`${td} font-semibold text-teal-800`}>
-                    {fmtHM(s.otFinalMinutes)}
+                    {formatDuration(s.otFinalMinutes)}
                     <span className="block text-xs font-normal text-zinc-500">total overtime</span>
                   </td>
                   <td colSpan={3} className={td} />

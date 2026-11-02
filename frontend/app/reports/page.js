@@ -7,7 +7,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Search, RefreshCw, Download, Printer, Pencil, Check, X, Loader2 } from 'lucide-react';
 import { IBM_Plex_Sans } from 'next/font/google';
 import SideNavBar from '../components/SideNavBar';
-import { formatTime, useTimeFormat } from '../timeFormat';
+import { formatDuration, formatHours, formatTime, useTimeFormat } from '../timeFormat';
 
 const plex = IBM_Plex_Sans({ subsets: ['latin'], weight: ['400', '500', '600'], display: 'swap' });
 
@@ -566,10 +566,10 @@ export default function AttendanceRegisterPage() {
                               fmtTime(r.outTime)
                             )}
                           </td>
-                          <td className={td}>{r.hours ?? '-'}</td>
+                          <td className={td}>{formatHours(r.hours)}</td>
                           <td className={td}>{r.punches || '-'}</td>
                           <td className={`${td} ${r.status === 'Present' ? 'text-teal-800' : ''}`}>
-                            {r.status === 'Present' ? fmtHM(r.otFinalMinutes) : '-'}
+                            {r.status === 'Present' ? formatDuration(r.otFinalMinutes) : '-'}
                             {r.status === 'Present' && r.manualOt && (
                               <span className="ml-1 text-xs text-zinc-500">manual</span>
                             )}
@@ -633,9 +633,9 @@ export default function AttendanceRegisterPage() {
                         <td className={`${td} font-semibold`} colSpan={6}>
                           Total
                         </td>
-                        <td className={`${td} font-semibold`}>{s.totalHours}</td>
+                        <td className={`${td} font-semibold`}>{formatHours(s.totalHours)}</td>
                         <td className={td} />
-                        <td className={`${td} font-semibold text-teal-800`}>{fmtHM(s.otFinalMinutes)}</td>
+                        <td className={`${td} font-semibold text-teal-800`}>{formatDuration(s.otFinalMinutes)}</td>
                         <td className={td} colSpan={2} />
                       </tr>
                     </tfoot>
@@ -646,7 +646,7 @@ export default function AttendanceRegisterPage() {
               {s && rows.length > 0 && (
                 <p className="border-t border-zinc-200 px-3 py-2.5 text-sm text-zinc-500">
                   Present {s.presentDays} · Missing out {s.missingOut} · Absent {s.absent} · Leave {s.leave} · Holiday{' '}
-                  {s.holiday} · Weekend {s.weekend}. Total overtime {fmtHM(s.otFinalMinutes)}.
+                  {s.holiday} · Weekend {s.weekend}. Total overtime {formatDuration(s.otFinalMinutes)}.
                 </p>
               )}
             </div>
