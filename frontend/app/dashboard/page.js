@@ -438,7 +438,7 @@ export default function Dashboard() {
         ['Missing out', today.missing, today.missing > 0 ? 'text-red-700' : 'text-zinc-900'],
         ['On leave', today.leave, 'text-zinc-900'],
         ['Holiday / off', today.off, 'text-zinc-900'],
-        ['OT hours', formatDuration(today.ot), 'text-teal-800'],
+        ['OT hours', today.ot ? formatDuration(today.ot) : '0h', 'text-teal-800'],
         ['Attendance', today.rate == null ? '-' : `${today.rate}%`, 'text-zinc-900'],
       ]
     : [];
@@ -615,10 +615,10 @@ export default function Dashboard() {
                           No attendance records found for this date. Use Sync from device to retrieve records.
                         </div>
                       ) : (
-                        <table className="w-full min-w-[560px] text-left text-[13px]">
+                        <table className="w-full min-w-[640px] text-left text-[13px]">
                           <thead className={thead}>
                             <tr>
-                              {['Emp ID', 'Device', 'Name', 'Check-in', 'Check-out', 'Hours', 'Punch', 'Status'].map((h) => (
+                              {['Emp ID', 'Device', 'Name', 'Check-in', 'Check-out', 'Hours', 'OT', 'Punch', 'Status'].map((h) => (
                                 <th key={h} className={th}>
                                   {h}
                                 </th>
@@ -636,6 +636,7 @@ export default function Dashboard() {
                                   <td className={`${td} whitespace-nowrap`}>{fmtTime(r.inTime)}</td>
                                   <td className={`${td} whitespace-nowrap`}>{fmtTime(r.outTime)}</td>
                                   <td className={td}>{formatHours(r.hours)}</td>
+                                  <td className={`${td} whitespace-nowrap`}>{r.otFinalMinutes ? formatDuration(r.otFinalMinutes) : '0h'}</td>
                                   <td className={td}>{r.punches || '-'}</td>
                                   <td className={td}>
                                     {r.status ? (

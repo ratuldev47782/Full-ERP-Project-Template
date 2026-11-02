@@ -79,7 +79,8 @@ export function formatDuration(minutes) {
   const totalMinutes = Math.max(0, Math.round(Number(minutes)));
   const hours = Math.floor(totalMinutes / 60);
   const remainingMinutes = totalMinutes % 60;
-  if (!hours) return `${remainingMinutes}m`;
+  if (!totalMinutes) return '0h';
+if (!hours) return `${remainingMinutes}m`;
   return remainingMinutes ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
 }
 
