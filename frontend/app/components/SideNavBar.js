@@ -17,6 +17,8 @@ import {
   FileText,
   ClipboardList,
   RefreshCw,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import DeviceStatus from './DeviceStatus';
 import { formatDateTime } from '../timeFormat';
@@ -24,6 +26,7 @@ import { formatDateTime } from '../timeFormat';
 const API = process.env.NEXT_PUBLIC_API || 'http://localhost:5000';
 const LAST_SYNC_KEY = 'lastSync';
 const SYNC_EVENT = 'attendance:synced';
+const COLLAPSED_KEY = 'sidebarCollapsed';
 
 const menu = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -163,10 +166,14 @@ function Brand({ showLabel }) {
   );
 }
 
-function SidebarBody({ showLabels, path, onLogout }) {
+function SidebarBody({ showLabels, path, onLogout, onToggleCollapse }) {
+  // onToggleCollapse is only passed for the desktop sidebar
+  const CollapseIcon = showLabels ? PanelLeftClose : PanelLeftOpen;
+  const collapseLabel = showLabels ? 'Collapse sidebar' : 'Expand sidebar';
+
   return (
     <>
-      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+      <nav className="flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-3 py-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {menu.map((m) => {
           const active = path === m.href || path.startsWith(`${m.href}/`);
           const Icon = m.icon;
@@ -175,6 +182,8 @@ function SidebarBody({ showLabels, path, onLogout }) {
               key={m.href}
               href={m.href}
               title={m.label}
+              aria-label={m.label}
+              aria-current={active ? 'page' : undefined}
               className={`flex items-center gap-3 rounded-full px-4 py-2.5 text-sm font-medium transition ${
                 active
                   ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-100'
@@ -182,7 +191,7 @@ function SidebarBody({ showLabels, path, onLogout }) {
               } ${showLabels ? '' : 'justify-center px-0'}`}
             >
               <Icon className={`h-5 w-5 shrink-0 ${active ? 'text-blue-600' : 'text-slate-400'}`} />
-              {showLabels && <span className="truncate">{m.label}</span>}
+              {showLabels && <span className="truncate whitespace-nowrap">{m.label}</span>}
             </Link>
           );
         })}
@@ -190,16 +199,30 @@ function SidebarBody({ showLabels, path, onLogout }) {
 
       <DevicePanel showLabels={showLabels} />
 
-      <div className="border-t border-slate-200 p-3">
+      <div
+        className={`flex items-center gap-1 border-t border-slate-200 p-3 ${
+          showLabels ? 'justify-between' : 'flex-col'
+        }`}
+      >
+        {onToggleCollapse && (
+          <button
+            onClick={onToggleCollapse}
+            title={`${collapseLabel} (Ctrl+B)`}
+            aria-label={collapseLabel}
+            aria-expanded={showLabels}
+            className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+          >
+            <CollapseIcon className="h-5 w-5" />
+          </button>
+        )}
+
         <button
           onClick={onLogout}
           title="Logout"
-          className={`flex w-full items-center gap-3 rounded-full px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-red-50 hover:text-red-600 ${
-            showLabels ? '' : 'justify-center px-0'
-          }`}
+          aria-label="Logout"
+          className="rounded-full p-2 text-slate-500 transition hover:bg-red-50 hover:text-red-600"
         >
-          <LogOut className="h-5 w-5 shrink-0" />
-          {showLabels && <span>Logout</span>}
+          <LogOut className="h-5 w-5" />
         </button>
       </div>
     </>
@@ -208,8 +231,68 @@ function SidebarBody({ showLabels, path, onLogout }) {
 
 /* ---------- Sidebar ---------- */
 
-export default function SideNavBar({ collapsed = false, mobileOpen = false, onOpen, onClose, onLogout }) {
+/**
+ * Collapse state works two ways:
+ *  - Uncontrolled (default): the sidebar manages its own state and remembers it in localStorage.
+ *  - Controlled: pass `collapsed` and `onToggleCollapse` from the parent layout.
+ */
+export default function SideNavBar({
+  collapsed: collapsedProp,
+  onToggleCollapse,
+  mobileOpen = false,
+  onOpen,
+  onClose,
+  onLogout,
+}) {
   const path = usePathname();
+  // Controlled only when the parent gives BOTH the value and a handler;
+  // otherwise the sidebar manages its own state (so the toggle always works).
+  const controlled = collapsedProp !== undefined && typeof onToggleCollapse === 'function';
+
+  const [innerCollapsed, setInnerCollapsed] = useState(false);
+  const collapsed = controlled ? collapsedProp : innerCollapsed;
+
+  // Restore saved preference (after mount to avoid hydration mismatch)
+  useEffect(() => {
+    if (controlled) return;
+    try {
+      setInnerCollapsed(localStorage.getItem(COLLAPSED_KEY) === '1');
+    } catch {}
+  }, [controlled]);
+
+  const toggle = useCallback(() => {
+    if (controlled) {
+      onToggleCollapse?.();
+      return;
+    }
+    setInnerCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(COLLAPSED_KEY, next ? '1' : '0');
+      } catch {}
+      return next;
+    });
+  }, [controlled, onToggleCollapse]);
+
+  // Ctrl/Cmd + B toggles the sidebar
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        toggle();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [toggle]);
+
+  // Close mobile drawer on Escape
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKey = (e) => e.key === 'Escape' && onClose?.();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mobileOpen, onClose]);
 
   return (
     <>
@@ -222,16 +305,16 @@ export default function SideNavBar({ collapsed = false, mobileOpen = false, onOp
         <Menu className="h-5 w-5" />
       </button>
 
-      {/* Desktop sidebar */}
+      {/* Desktop sidebar (shrinkable) */}
       <aside
         style={{ width: collapsed ? 76 : 256 }}
-        className="hidden shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white transition-[width] duration-200 md:flex"
+        className="hidden shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white transition-[width] duration-200 motion-reduce:transition-none md:flex"
       >
         <Brand showLabel={!collapsed} />
-        <SidebarBody showLabels={!collapsed} path={path} onLogout={onLogout} />
+        <SidebarBody showLabels={!collapsed} path={path} onLogout={onLogout} onToggleCollapse={toggle} />
       </aside>
 
-      {/* Mobile drawer */}
+      {/* Mobile drawer (always expanded) */}
       {mobileOpen && (
         <div className="fixed inset-0 z-40 md:hidden">
           <div className="absolute inset-0 bg-slate-900/50" onClick={onClose} />
