@@ -8,6 +8,7 @@ import { Plus, Pencil, Trash2, CheckCircle2, AlertCircle, Menu, LogOut, RefreshC
 import SideNavBar from '../components/SideNavBar';
 import DeviceStatus from '../components/DeviceStatus';
 import { formatDateTime, useTimeFormat } from '../timeFormat';
+import { confirmDialog } from '../../lib/dialog';
 
 const API = process.env.NEXT_PUBLIC_API || 'http://localhost:5000';
 
@@ -180,7 +181,11 @@ export default function HolidaysPage() {
   };
 
   const remove = async (h) => {
-    if (!confirm(`Delete holiday "${h.name}" (${fmtDate(h.date)})?`)) return;
+    const ok = await confirmDialog({
+      title: 'Delete holiday?',
+      text: `Delete holiday "${h.name}" (${fmtDate(h.date)})?`,
+    });
+    if (!ok) return;
     try {
       await api(`/api/holidays/${h._id}`, { method: 'DELETE' });
       load();

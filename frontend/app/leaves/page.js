@@ -8,6 +8,7 @@ import { Pencil, Trash2, CheckCircle2, AlertCircle, Search, Menu, LogOut, Refres
 import SideNavBar from '../components/SideNavBar';
 import DeviceStatus from '../components/DeviceStatus';
 import { formatDateTime, useTimeFormat } from '../timeFormat';
+import { confirmDialog } from '../../lib/dialog';
 
 const API = process.env.NEXT_PUBLIC_API || 'http://localhost:5000';
 
@@ -306,7 +307,11 @@ export default function LeavesPage() {
   };
 
   const remove = async (l) => {
-    if (!confirm(`Delete ${l.type} of ${l.employee.name} on ${fmtDate(l.date)}?`)) return;
+    const ok = await confirmDialog({
+      title: 'Delete leave?',
+      text: `Delete ${l.type} of ${l.employee.name} on ${fmtDate(l.date)}?`,
+    });
+    if (!ok) return;
     try {
       await api(`/api/leaves/${l._id}`, { method: 'DELETE' });
       load();

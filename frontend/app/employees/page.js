@@ -10,6 +10,7 @@ import { IBM_Plex_Sans } from 'next/font/google';
 import SideNavBar from '../components/SideNavBar';
 import DeviceStatus from '../components/DeviceStatus';
 import { formatDateTime, useTimeFormat } from '../timeFormat';
+import { confirmDialog } from '../../lib/dialog';
 
 const plex = IBM_Plex_Sans({ subsets: ['latin'], weight: ['400', '500', '600'], display: 'swap' });
 
@@ -269,7 +270,11 @@ export default function EmployeesPage() {
   };
 
   const remove = async (emp) => {
-    if (!confirm(`Delete ${emp.name} (${emp.employeeId})? This cannot be undone.`)) return;
+    const ok = await confirmDialog({
+      title: 'Delete employee?',
+      text: `Delete ${emp.name} (${emp.employeeId})? This cannot be undone.`,
+    });
+    if (!ok) return;
     try {
       await api(`/api/employees/${emp._id}`, { method: 'DELETE' });
       load();

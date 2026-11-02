@@ -9,6 +9,7 @@ import { IBM_Plex_Sans } from 'next/font/google';
 import SideNavBar from '../components/SideNavBar';
 import DeviceStatus from '../components/DeviceStatus';
 import { formatDateTime, formatTime, useTimeFormat } from '../timeFormat';
+import { confirmDialog } from '../../lib/dialog';
 
 const plex = IBM_Plex_Sans({ subsets: ['latin'], weight: ['400', '500', '600'], display: 'swap' });
 
@@ -419,19 +420,25 @@ export default function Dashboard() {
       // Step 1: missing log upload + verify (delete hoy na)
       const p = await api('/api/clear-device/prepare', { method: 'POST' });
       if (!p.logs) {
-        setMsg({ text: 'Device-e kono log nai.' });
+        setMsg({ text: 'There is no log on the device.' });
         return;
       }
       window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: { at: new Date().toISOString() } }));
 
       // Step 2: user-ke jiggesh
-      const ok = confirm(
-        `Device-e ${p.logs} ta log ache.\n` +
-          `DB-te age theke chilo: ${p.alreadyInDb}\n` +
-          `Notun upload holo: ${p.uploaded}\n` +
-          `Sob log DB-te verified.\n\n` +
-          `Ebar device theke shob log DELETE korbo?\nEta undo kora jay na.`
-      );
+      const ok = await confirmDialog({
+        title: 'Delete device logs?',
+        lines: [
+          `Device-e ${p.logs} ta log ache.`,
+          `DB-te age theke chilo: ${p.alreadyInDb}`,
+          `Notun upload holo: ${p.uploaded}`,
+          'Sob log DB-te verified.',
+          '',
+          'Ebar device theke shob log DELETE korbo?',
+          'Eta undo kora jay na.',
+        ],
+        confirmText: 'Delete logs',
+      });
       if (!ok) {
         setMsg({ text: `Delete cancel. ${p.uploaded} ta log DB-te upload hoyeche, device-e log ager moto ache.` });
         return;
