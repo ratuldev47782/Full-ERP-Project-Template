@@ -255,6 +255,7 @@ export default function AttendanceRegisterPage() {
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [err, setErr] = useState(null);
 
   const seq = useRef(0);
@@ -305,6 +306,23 @@ export default function AttendanceRegisterPage() {
   useEffect(() => {
     if (ready) load();
   }, [ready, load]);
+
+  // Device theke sync kore tarpor register abar load kori
+  const sync = async () => {
+    if (syncing) return;
+    setSyncing(true);
+    setErr(null);
+    try {
+      const r = await api('/api/sync', { method: 'POST' });
+      await load();
+      setToast({ text: `Synced: ${r.written} new punches (${r.logs} logs on device).` });
+    } catch (e) {
+      setErr(e.message);
+      setToast({ err: true, text: `Sync failed: ${e.message}` });
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   // Filter badalale purono row-er editor bondho
   useEffect(() => {
@@ -433,9 +451,9 @@ export default function AttendanceRegisterPage() {
 
           <div className="flex shrink-0 items-center gap-3">
             <DeviceStatus />
-            <button onClick={load} disabled={loading} className={`${btnSecondary} flex items-center gap-2 py-1.5`}>
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin motion-reduce:animate-none' : ''}`} />
-              Refresh
+            <button onClick={sync} disabled={syncing} className={`${btnSecondary} flex items-center gap-2 py-1.5`}>
+              <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin motion-reduce:animate-none' : ''}`} />
+              {syncing ? 'Syncing' : 'Sync'}
             </button>
             <button onClick={logout} className={linkBtn}>
               Log out
@@ -687,7 +705,7 @@ export default function AttendanceRegisterPage() {
       {toast && (
         <div
           role="status"
-          className="fixed bottom-4 right-4 z-50 max-w-sm rounded-md bg-zinc-900 px-4 py-2.5 text-sm text-white"
+          className={`fixed bottom-4 right-4 z-50 max-w-sm rounded-md px-4 py-2.5 text-sm text-white ${toast.err ? 'bg-red-700' : 'bg-zinc-900'}`}
         >
           {toast.text}
         </div>

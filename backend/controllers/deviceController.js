@@ -81,6 +81,18 @@ function withDevice(fn, tries = 3) {
 
 const getInfo = () => withDevice((zk) => zk.getInfo(), 1);
 
+// Device-e koto gulo attendance log ache (na janle null). getInfo kom shomoy ney.
+// Empty device-e getAttendances() call korle library timeout kore / hang kore,
+// tai download korar age ei check ta kori.
+async function readDeviceLogCount(zk) {
+  try {
+    const n = Number((await zk.getInfo() || {}).logCounts);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 // ---------- Normal sync (kichu delete hoy na) ----------
 // Boro device history ek command-e likhle MongoDB command size limit-e dhaka khete pare,
 // tai chhoto batch-e likhi.
@@ -111,18 +123,24 @@ async function upsertAttendance(docs) {
 async function syncDevice() {
   return withDevice(async (zk) => {
     // Device-e kono log na thakle attendance download korar dorkar nai.
-    // (Empty device-e library-er read 10s wait kore / error dey - tai age-i check.)
-    let deviceLogs = null;
-    try {
-      const n = Number((await zk.getInfo() || {}).logCounts);
-      if (Number.isFinite(n) && n >= 0) deviceLogs = n;
-    } catch (e) {}
+    // (Empty device-e library-er read long time wait kore / error dey - tai age-i check.)
+    const deviceLogs = await readDeviceLogCount(zk);
     if (deviceLogs === 0) return { logs: 0, written: 0, deviceLogs: 0 };
 
     const res = await zk.getAttendances();
     // adhuro read (packet timeout) hole retry hobe, adhuro data save hobe na
     if (res && res.err) throw res.err;
     const logs = (res && res.data) || [];
+
+    // Debug: device theke asha record-er shob property console-e dekhi
+    if (logs.length) {
+      console.log(`[device sync] ${logs.length} record(s) from device`);
+      console.log('[device sync] properties:', Object.keys(logs[0]));
+      logs.slice(0, 20).forEach((l, i) => console.log(`[device sync] #${i + 1}`, l));
+      if (logs.length > 20) console.log(`[device sync] ... ${logs.length - 20} more record(s) not printed`);
+    } else {
+      console.log('[device sync] device returned no attendance records');
+    }
 
     // only write records from the last stored time (minus 1 day safety)
     const last = await Attendance.findOne({ device: process.env.ZK_IP })
@@ -192,7 +210,15 @@ const uploadDocs = (docs) => upsertAttendance(docs);
 // STEP 1: shudhu upload + verify. Device theke kichu delete hoy na.
 async function prepareClear() {
   return withDevice(async (zk) => {
-    const docs = toDocs((await zk.getAttendances()).data || []);
+    // Device already empty hole delete korar kichu nai, tai download o korbo na.
+    // (Empty device-e getAttendances() 60s wait kore TIMEOUT_ON_RECEIVING_REQUEST_DATA dey.)
+    const deviceLogs = await readDeviceLogCount(zk);
+    if (deviceLogs === 0) return { logs: 0, alreadyInDb: 0, uploaded: 0, verified: true, deviceLogs: 0 };
+
+    const res = await zk.getAttendances();
+    // adhuro read hole verify kora jay na, tai upload-o korbo na
+    if (res && res.err) throw res.err;
+    const docs = toDocs((res && res.data) || []);
     if (!docs.length) return { logs: 0, alreadyInDb: 0, uploaded: 0, verified: true };
 
     const missing = await findMissing(docs);
@@ -214,7 +240,16 @@ async function prepareClear() {
 // STEP 2: user confirm korle. Abar verify kore tarpor delete.
 async function confirmClear(expectedLogs) {
   return withDevice(async (zk) => {
-    const docs = toDocs((await zk.getAttendances()).data || []);
+    // Device already empty hole clear korar kichu nai
+    const deviceLogs = await readDeviceLogCount(zk);
+    if (deviceLogs === 0) return { cleared: false, logs: 0, alreadyEmpty: true };
+
+    const res = await zk.getAttendances();
+    // adhuro read mane DB-te verify kora jayni -> device theke kichu delete korbo na
+    if (res && res.err) {
+      throw new Error(`Log pora shompurno hoyni (${res.err.message || res.err}). Device theke kichu delete hoyni.`);
+    }
+    const docs = toDocs((res && res.data) || []);
     if (!docs.length) return { cleared: false, logs: 0 };
 
     const missing = await findMissing(docs);
