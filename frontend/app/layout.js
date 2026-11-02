@@ -3,7 +3,7 @@
 import './globals.css';
 
 export const metadata = {
-  title: 'Attendance',
+  title: 'HKD Attendance MS',
   description: 'ZKTeco attendance system',
   icons: {
     icon: '/HKD_LOGO.png',
