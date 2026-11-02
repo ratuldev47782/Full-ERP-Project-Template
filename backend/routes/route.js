@@ -33,6 +33,10 @@ module.exports = function routes(auth) {
   r.get('/logs', auth, attendance.logs);
   r.get('/daily', auth, attendance.daily);
 
+  // ---- Attendance register (date range + search) ----
+  r.get('/attendance/register', auth, attendance.register);
+  r.get('/attendance/register-pdf', auth, attendance.registerPdf);
+
   // ---- Employees ----
   r.get('/employees', auth, employee.list);
   r.get('/employees/:id/monthly', auth, attendance.monthly);

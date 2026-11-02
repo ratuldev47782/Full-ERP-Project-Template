@@ -13,11 +13,13 @@ import {
   CalendarDays,
   CalendarCheck,
   FileText,
+  ClipboardList,
 } from 'lucide-react';
 
 const menu = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/employees', label: 'Employees', icon: Users },
+  { href: '/attendance', label: 'Attendance Register', icon: ClipboardList },
   { href: '/reports', label: 'Attendance Report', icon: FileText },
   { href: '/leaves', label: 'Leave Management', icon: CalendarCheck },
   { href: '/holidays', label: 'Holidays', icon: CalendarDays },

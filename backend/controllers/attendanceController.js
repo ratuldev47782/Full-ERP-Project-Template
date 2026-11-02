@@ -278,6 +278,142 @@ async function monthlyReport(empId, month) {
   return { employee: emp, month, summary: summarize(days, todayStr), days };
 }
 
+/* ================= attendance register (date range, all employees) ================= */
+// Search page-er jonno: ek ba onek din, ek ba shob employee.
+// Row gulo buildDay() theke ashe, tai manual edit ar OT rounding automatic.
+
+const RANGE_MAX_DAYS = 31;
+const REGISTER_TIME_FORMATS = ['12-hour', '24-hour'];
+
+const nextDateStr = (s) => new Date(Date.parse(`${s}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
+const escapeRx = (v) => String(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+function dateRange(from, to) {
+  const f = String(from || to || dhakaDate(new Date())).trim();
+  const t = String(to || f).trim();
+  if (!isValidDate(f) || !isValidDate(t)) throw new Error('Date must be in YYYY-MM-DD format');
+  if (f > t) throw new Error('From date must be on or before To date');
+  const span = Math.round((Date.parse(`${t}T00:00:00Z`) - Date.parse(`${f}T00:00:00Z`)) / 86400000) + 1;
+  if (span > RANGE_MAX_DAYS) throw new Error(`Date range cannot be longer than ${RANGE_MAX_DAYS} days`);
+  return { from: f, to: t, days: span };
+}
+
+// employee = Employee _id (search theke pick kora), q = free text (Employee ID / Proximity ID / Name)
+async function employeesFor({ employee, q } = {}) {
+  if (employee) {
+    if (!mongoose.isValidObjectId(employee)) throw new Error('Invalid employee');
+    const emp = await Employee.findById(employee).select('_id').lean();
+    if (!emp) throw new Error('Employee not found');
+    return [emp._id];
+  }
+  const term = String(q || '').trim();
+  if (!term) return [];
+  const rx = new RegExp(escapeRx(term), 'i');
+  const list = await Employee.find({ $or: [{ employeeId: rx }, { proximityId: rx }, { name: rx }] })
+    .select('_id')
+    .limit(200)
+    .lean();
+  return list.map((e) => e._id);
+}
+
+function registerSummary(rows) {
+  const s = {
+    rows: rows.length, present: 0, missingOut: 0, absent: 0, weekend: 0, holiday: 0, leave: 0,
+    totalHours: 0, otFinalMinutes: 0,
+  };
+  for (const r of rows) {
+    if (r.status === 'Present') s.present++;
+    else if (r.status === 'Missing Out') s.missingOut++;
+    else if (r.status === 'Absent') s.absent++;
+    else if (r.status === 'Weekend') s.weekend++;
+    else if (r.status === 'Holiday') s.holiday++;
+    else if (['CL', 'SL', 'EL'].includes(r.status)) s.leave++;
+    s.totalHours += r.hours || 0;
+    s.otFinalMinutes += r.otFinalMinutes || 0;
+  }
+  s.totalHours = Number(s.totalHours.toFixed(2));
+  s.presentDays = s.present + s.missingOut;
+  s.otHours = Number((s.otFinalMinutes / 60).toFixed(2));
+  return s;
+}
+
+async function registerReport({ from, to, employeeIds = [], showEmpty = false }) {
+  const todayStr = dhakaDate(new Date());
+  const settings = (await Setting.current()).toObject();
+  const employees = await Employee.find(employeeIds.length ? { _id: { $in: employeeIds } } : {})
+    .sort({ employeeId: 1 })
+    .lean();
+  const proxIds = employees.map((e) => e.proximityId);
+
+  const [holidays, leaves, edits, logs] = await Promise.all([
+    Holiday.find({ date: { $gte: from, $lte: to } }).lean(),
+    Leave.find({ date: { $gte: from, $lte: to } }).lean(),
+    AttendanceEdit.find({ date: { $gte: from, $lte: to } }).lean(),
+    Attendance.find({ userId: { $in: proxIds }, timestamp: { $gte: dayStart(from), $lte: dayEnd(to) } })
+      .sort({ timestamp: 1 })
+      .lean(),
+  ]);
+
+  const holidayBy = Object.fromEntries(holidays.map((h) => [h.date, h]));
+  const key = (empId, date) => `${String(empId)}|${date}`;
+  const leaveBy = Object.fromEntries(leaves.map((l) => [key(l.employee, l.date), l]));
+  const editBy = Object.fromEntries(edits.map((x) => [key(x.employee, x.date), x]));
+
+  const punchBy = {};
+  for (const l of logs) {
+    const k = `${l.userId}|${dhakaDate(l.timestamp)}`;
+    (punchBy[k] ||= []).push(l.timestamp);
+  }
+
+  const dates = [];
+  for (let d = from; d <= to && d <= todayStr; d = nextDateStr(d)) dates.push(d);
+
+  const rows = [];
+  for (const date of dates) {
+    for (const e of employees) {
+      const joinStr = isoDate(e.joinDate);
+      if (joinStr && date < joinStr) continue;
+      const times = punchBy[`${e.proximityId}|${date}`] || [];
+      const edit = editBy[key(e._id, date)];
+      if (!times.length && !edit && !showEmpty) continue; // punch/edit chhara din default-e bad
+
+      const day = buildDay(date, times, {
+        settings,
+        holiday: holidayBy[date],
+        leave: leaveBy[key(e._id, date)],
+        joinStr,
+        todayStr,
+        edit,
+      });
+      if (!day.status && !edit) continue;
+
+      rows.push({
+        date,
+        employee: String(e._id),
+        employeeId: e.employeeId,
+        proximityId: e.proximityId,
+        name: e.name,
+        designation: e.designation || '',
+        department: e.department || '',
+        section: e.section || '',
+        inTime: day.inTime,
+        outTime: day.outTime,
+        hours: day.hours,
+        punches: day.punches,
+        status: day.status,
+        otActualMinutes: day.otActualMinutes,
+        otFinalMinutes: day.otFinalMinutes,
+        manualOt: day.manualOt,
+        edited: day.edited,
+        holidayName: day.holidayName,
+        leaveType: day.leaveType,
+      });
+    }
+  }
+
+  return { rows, summary: registerSummary(rows), days: dates };
+}
+
 /* ================= monthly PDF (A4, ek page) ================= */
 // Logo: backend/assets/logo.png (ba .jpg) rakhle header-e boshbe.
 
@@ -461,6 +597,175 @@ function buildPdf(res, { report, settings, month, timeFormat = '24-hour' }) {
   doc.end();
 }
 
+/* ================= register PDF (A4 landscape, multi page) ================= */
+
+function buildRegisterPdf(res, { rows, summary, settings, from, to, label, timeFormat = '24-hour' }) {
+  const doc = new PDFDocument({
+    size: 'A4',
+    layout: 'landscape',
+    margin: 0,
+    bufferPages: true,
+    info: { Title: `Attendance Register ${from}${from === to ? '' : ` to ${to}`}` },
+  });
+  doc.pipe(res);
+
+  const W = doc.page.width; // 841.89
+  const H = doc.page.height; // 595.28
+  const L = 28;
+  const R = W - 28;
+  const CW = R - L;
+  const ROW_H = 15;
+  const HEAD_H = 18;
+  const BOTTOM = H - 40;
+
+  const cols = [
+    ['DATE', 62], ['EMP ID', 68], ['DEVICE ID', 66], ['NAME', 257],
+    ['CHECK-IN', 58], ['CHECK-OUT', 58], ['HOURS', 46], ['PUNCHES', 48], ['OT', 44], ['STATUS', 78],
+  ];
+  const colX = [];
+  let acc = L;
+  for (const [, w] of cols) {
+    colX.push(acc);
+    acc += w;
+  }
+
+  const cell = (x, yy, w, h, text, o = {}) => {
+    if (o.fill) doc.save().rect(x, yy, w, h).fill(o.fill).restore();
+    doc.lineWidth(0.7).strokeColor('#000').rect(x, yy, w, h).stroke();
+    const size = o.size || 7.5;
+    doc.fillColor('#000').font(o.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(size);
+    doc.text(String(text ?? ''), x + 3, yy + (h - size) / 2 - 0.5, {
+      width: w - 6,
+      align: o.align || 'center',
+      lineBreak: false,
+      ellipsis: true,
+    });
+  };
+
+  const drawHead = (yy) => {
+    let x = L;
+    cols.forEach(([t, w]) => {
+      cell(x, yy, w, HEAD_H, t, { bold: true, fill: '#d9d9d9', size: 8 });
+      x += w;
+    });
+    return yy + HEAD_H;
+  };
+
+  const drawContd = () => {
+    doc.fillColor('#000').font('Helvetica-Bold').fontSize(9)
+      .text(`ATTENDANCE REGISTER (continued)`, L, 14, { width: CW, align: 'center', lineBreak: false });
+    doc.lineWidth(1).strokeColor('#000').moveTo(L, 28).lineTo(R, 28).stroke();
+    return 32;
+  };
+
+  // ---- Header (page 1) ----
+  const logo = findLogo();
+  if (logo) {
+    try {
+      const img = doc.openImage(logo);
+      const lh = 38;
+      doc.image(logo, L, 12, { width: img.width * (lh / img.height), height: lh });
+    } catch (e) {}
+  }
+  doc.fillColor('#000').font('Helvetica-Bold').fontSize(14)
+    .text(settings.companyName || '', L, 12, { width: CW, align: 'center', lineBreak: false });
+  doc.font('Helvetica').fontSize(9)
+    .text(settings.companyAddress || '', L, 30, { width: CW, align: 'center', lineBreak: false });
+  doc.font('Helvetica-Bold').fontSize(9)
+    .text('ATTENDANCE REGISTER', L, 43, { width: CW, align: 'center', lineBreak: false });
+
+  const period = from === to ? shortDate(from) : `${shortDate(from)} to ${shortDate(to)}`;
+  doc.font('Helvetica').fontSize(8.5)
+    .text(`Period: ${period}    |    ${label || 'All employees'}    |    Times: Bangladesh (${timeFormat})`, L, 55, {
+      width: CW, align: 'center', lineBreak: false,
+    });
+  doc.lineWidth(1.2).strokeColor('#000').moveTo(L, 68).lineTo(R, 68).stroke();
+
+  let y = drawHead(74);
+
+  // ---- Rows ----
+  if (!rows.length) {
+    doc.fillColor('#000').font('Helvetica').fontSize(9)
+      .text('No attendance records for this range.', L, y + 10, { width: CW, align: 'center', lineBreak: false });
+    y += 30;
+  }
+
+  for (const r of rows) {
+    if (y + ROW_H > BOTTOM) {
+      doc.addPage();
+      y = drawHead(drawContd());
+    }
+    const ot = r.status === 'Present' ? fmtHM(r.otFinalMinutes) : '-';
+    const vals = [
+      shortDate(r.date),
+      r.employeeId,
+      r.proximityId,
+      `${r.name}${r.edited ? ' *' : ''}`,
+      r.inTime ? formatDhakaTime(r.inTime, timeFormat) : '-',
+      r.outTime ? formatDhakaTime(r.outTime, timeFormat) : '-',
+      r.hours != null ? Number(r.hours).toFixed(2) : '-',
+      r.punches || '-',
+      ot,
+      r.status || '-',
+    ];
+    vals.forEach((v, i) => {
+      cell(colX[i], y, cols[i][1], ROW_H, v, {
+        size: 7.5,
+        align: i === 3 ? 'left' : 'center',
+        bold: i === 3,
+      });
+    });
+    y += ROW_H;
+  }
+
+  // ---- Totals ----
+  if (rows.length) {
+    if (y + ROW_H > BOTTOM) {
+      doc.addPage();
+      y = drawHead(drawContd());
+    }
+    const total = [
+      'TOTAL', '', '', `${summary.rows} record${summary.rows === 1 ? '' : 's'}`, '', '',
+      summary.totalHours, '', fmtHM(summary.otFinalMinutes), '',
+    ];
+    total.forEach((v, i) => {
+      cell(colX[i], y, cols[i][1], ROW_H, v, { bold: true, fill: '#d9d9d9', size: 7.5, align: i === 3 ? 'left' : 'center' });
+    });
+    y += ROW_H + 10;
+  }
+
+  // ---- Summary strip ----
+  if (y + 26 > BOTTOM) {
+    doc.addPage();
+    y = drawContd() + 4;
+  }
+  doc.fillColor('#000').font('Helvetica').fontSize(8.5)
+    .text(
+      `Present ${summary.presentDays}   |   Missing out ${summary.missingOut}   |   Absent ${summary.absent}   |   Leave ${summary.leave}   |   Holiday ${summary.holiday}   |   Weekend ${summary.weekend}`,
+      L, y, { width: CW, lineBreak: false }
+    );
+  y += 13;
+  doc.font('Helvetica').fontSize(8.5)
+    .text(
+      `Total hours ${summary.totalHours}   |   Total overtime ${fmtHM(summary.otFinalMinutes)}   |   * check-in / check-out adjusted manually`,
+      L, y, { width: CW, lineBreak: false }
+    );
+
+  // ---- Footer on every page ----
+  const pages = doc.bufferedPageRange();
+  for (let i = 0; i < pages.count; i++) {
+    doc.switchToPage(pages.start + i);
+    doc.page.margins.bottom = 0;
+    doc.lineWidth(0.8).strokeColor('#000').moveTo(L, H - 26).lineTo(R, H - 26).stroke();
+    doc.fillColor('#000').font('Helvetica').fontSize(8)
+      .text(`Print Date & Time: ${printStamp(timeFormat)}`, L, H - 21, { width: CW / 2, align: 'left', lineBreak: false });
+    doc.font('Helvetica').fontSize(8)
+      .text(`Page ${i + 1} of ${pages.count}`, L, H - 21, { width: CW, align: 'right', lineBreak: false });
+  }
+
+  doc.end();
+}
+
 /* ================= route handlers ================= */
 
 const errText = (e) => e.message || String(e);
@@ -532,6 +837,50 @@ async function monthlyPdf(req, res) {
   }
 }
 
+// GET /attendance/register?from=YYYY-MM-DD&to=YYYY-MM-DD&employee=<id>|q=<text>&showEmpty=1
+async function register(req, res) {
+  try {
+    const { from, to } = dateRange(req.query.from, req.query.to);
+    const employeeIds = await employeesFor({ employee: req.query.employee, q: req.query.q });
+    const showEmpty = ['1', 'true'].includes(String(req.query.showEmpty || ''));
+    const report = await registerReport({ from, to, employeeIds, showEmpty });
+    res.json({ from, to, showEmpty, ...report });
+  } catch (e) {
+    res.status(400).json({ error: errText(e) });
+  }
+}
+
+// GET /attendance/register-pdf?from=...&to=...&employee=...&q=...&showEmpty=1&timeFormat=24-hour
+async function registerPdf(req, res) {
+  try {
+    const { from, to } = dateRange(req.query.from, req.query.to);
+    const timeFormat = String(req.query.timeFormat || '24-hour');
+    if (!REGISTER_TIME_FORMATS.includes(timeFormat)) throw new Error('Time format must be 12-hour or 24-hour');
+
+    const employeeIds = await employeesFor({ employee: req.query.employee, q: req.query.q });
+    const showEmpty = ['1', 'true'].includes(String(req.query.showEmpty || ''));
+    const report = await registerReport({ from, to, employeeIds, showEmpty });
+    const settings = (await Setting.current()).toObject();
+
+    let label = 'All employees';
+    if (req.query.employee) {
+      const emp = await Employee.findById(req.query.employee).lean();
+      if (emp) label = `${emp.name} (Employee ID ${emp.employeeId}, device ID ${emp.proximityId})`;
+    } else if (req.query.q) {
+      label = `Search: ${String(req.query.q).slice(0, 60)}`;
+    }
+
+    const file = `Attendance_Register_${from}${from === to ? '' : `_to_${to}`}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${file}"`);
+    buildRegisterPdf(res, {
+      rows: report.rows, summary: report.summary, settings, from, to, label, timeFormat,
+    });
+  } catch (e) {
+    if (!res.headersSent) res.status(400).json({ error: errText(e) });
+  }
+}
+
 // PUT /employees/:id/attendance-edit  { date, inTime, outTime, otMinutes, note }
 // Shob khali pathale override muche jay (device data-te ferot).
 async function saveEdit(req, res) {
@@ -595,6 +944,7 @@ module.exports = {
   hhmmToMin, fmtHM, monthInfo, roundOtMinutes, otRound, computeWork, settingsInfo,
   // reports
   dailyReport, monthlyReport, buildDay, summarize, buildPdf,
+  registerReport, registerSummary, dateRange, buildRegisterPdf,
   // handlers
-  logs, daily, monthly, monthlyPdf, saveEdit,
+  logs, daily, monthly, monthlyPdf, register, registerPdf, saveEdit,
 };
