@@ -554,11 +554,12 @@ function buildPdf(res, { report, settings, month, timeFormat = '24-hour' }) {
     else if (LEAVE_NAME[d.status]) special = LEAVE_NAME[d.status];
     else if (d.status === 'Missing Out') special = 'Missing check-out';
 
+    // In/Out punch na thakle "-" dekhabe
     const vals = [
       shortDate(d.date),
-      d.inTime ? formatDhakaTime(d.inTime, timeFormat) : (timeFormat === '12-hour' ? '12:00:00 AM' : '00:00:00'),
-      d.outTime ? formatDhakaTime(d.outTime, timeFormat) : (timeFormat === '12-hour' ? '12:00:00 AM' : '00:00:00'),
-      formatDuration(d.otFinalMinutes),
+      d.inTime ? formatDhakaTime(d.inTime, timeFormat) : '-',
+      d.outTime ? formatDhakaTime(d.outTime, timeFormat) : '-',
+      d.status === 'Present' ? formatDuration(d.otFinalMinutes) : '-',
       code,
       special,
     ];

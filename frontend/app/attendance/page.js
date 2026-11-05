@@ -239,8 +239,7 @@ export default function AttendanceRegisterPage() {
 
   const [emp, setEmp] = useState(null);
   const [searchKey, setSearchKey] = useState(0);
-  const [from, setFrom] = useState(todayDhaka);
-  const [to, setTo] = useState(todayDhaka);
+  const [date, setDate] = useState(todayDhaka);
   const [showEmpty, setShowEmpty] = useState(false);
 
   const [data, setData] = useState(null);
@@ -269,12 +268,13 @@ export default function AttendanceRegisterPage() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // Single day: backend still takes from/to, so send the same date for both
   const query = useCallback(() => {
-    const p = new URLSearchParams({ from, to });
+    const p = new URLSearchParams({ from: date, to: date });
     if (emp?._id) p.set('employee', emp._id);
     if (showEmpty) p.set('showEmpty', '1');
     return p.toString();
-  }, [from, to, emp, showEmpty]);
+  }, [date, emp, showEmpty]);
 
   const load = useCallback(async () => {
     const my = ++seq.current;
@@ -324,22 +324,11 @@ export default function AttendanceRegisterPage() {
   // Filter badalale purono row-er editor bondho
   useEffect(() => {
     setEditing(null);
-  }, [from, to, emp, showEmpty]);
+  }, [date, emp, showEmpty]);
 
   const pickEmp = (e) => {
     setEmp(e);
     setSearchKey((k) => k + 1);
-  };
-
-  const setFromDate = (v) => {
-    if (!v) return;
-    setFrom(v);
-    if (to && v > to) setTo(v);
-  };
-  const setToDate = (v) => {
-    if (!v) return;
-    setTo(v);
-    if (from && v < from) setFrom(v);
   };
 
   const startEdit = (row) => {
@@ -383,7 +372,7 @@ export default function AttendanceRegisterPage() {
     try {
       await downloadFile(
         `/api/attendance/register-pdf?${query()}&timeFormat=${timeFormat}`,
-        `Attendance_Register_${from}${from === to ? '' : `_to_${to}`}.pdf`
+        `Attendance_Register_${date}.pdf`
       );
     } catch (e) {
       setErr(e.message);
@@ -434,23 +423,12 @@ export default function AttendanceRegisterPage() {
                 <EmployeeSearch key={searchKey} onSelect={pickEmp} />
 
                 <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-zinc-700">From</span>
+                  <span className="mb-1 block text-xs font-medium text-zinc-700">Date</span>
                   <input
                     type="date"
-                    value={from}
-                    max={to || undefined}
-                    onChange={(e) => setFromDate(e.target.value)}
-                    className={`${inputCls} w-36`}
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-zinc-700">To</span>
-                  <input
-                    type="date"
-                    value={to}
-                    min={from || undefined}
-                    onChange={(e) => setToDate(e.target.value)}
+                    value={date}
+                    max={todayDhaka()}
+                    onChange={(e) => e.target.value && setDate(e.target.value)}
                     className={`${inputCls} w-36`}
                   />
                 </label>
@@ -507,8 +485,7 @@ export default function AttendanceRegisterPage() {
             <div className="mt-3 overflow-hidden rounded-md border border-zinc-300 bg-white">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-3 py-2.5">
                 <p className="text-sm font-medium text-zinc-900">
-                  {fmtDate(from)}
-                  {from === to ? '' : ` to ${fmtDate(to)}`}
+                  {fmtDate(date)}
                   <span className="ml-2 font-normal text-zinc-500">
                     {loading ? 'Loading' : `${s ? s.rows : 0} row${s && s.rows === 1 ? '' : 's'}`}
                   </span>

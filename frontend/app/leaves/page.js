@@ -384,7 +384,7 @@ export default function LeavesPage() {
             </div>
           )}
 
-          <form onSubmit={submit} className="mb-5 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <form onSubmit={submit} className="mb-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-800">
               {editId ? 'Edit Leave' : 'Assign Leave'}
             </div>

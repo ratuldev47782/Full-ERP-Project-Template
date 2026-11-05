@@ -28,6 +28,14 @@ const LAST_SYNC_KEY = 'lastSync';
 const SYNC_EVENT = 'attendance:synced';
 const COLLAPSED_KEY = 'sidebarCollapsed';
 
+/*
+ * Module-level cache. The sidebar is remounted on every page navigation
+ * (because it is rendered inside each page), but this variable survives
+ * client-side navigation, so the sidebar starts in the right state
+ * immediately instead of starting expanded and animating to collapsed.
+ */
+let collapsedCache = null;
+
 const menu = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/employees', label: 'Employees', icon: Users },
@@ -294,30 +302,36 @@ export default function SideNavBar({
   // otherwise the sidebar manages its own state (so the toggle always works).
   const controlled = collapsedProp !== undefined && typeof onToggleCollapse === 'function';
 
-  const [innerCollapsed, setInnerCollapsed] = useState(false);
+  // Start from the module cache so remounts during navigation keep the right width.
+  const [innerCollapsed, setInnerCollapsed] = useState(collapsedCache ?? false);
+  // Only animate the width after the user actually toggles, never on mount/navigation.
+  const [animate, setAnimate] = useState(false);
   const collapsed = controlled ? collapsedProp : innerCollapsed;
 
   // Restore saved preference (after mount to avoid hydration mismatch)
   useEffect(() => {
     if (controlled) return;
     try {
-      setInnerCollapsed(localStorage.getItem(COLLAPSED_KEY) === '1');
+      const saved = localStorage.getItem(COLLAPSED_KEY) === '1';
+      collapsedCache = saved;
+      setInnerCollapsed(saved);
     } catch {}
   }, [controlled]);
 
   const toggle = useCallback(() => {
     if (controlled) {
+      setAnimate(true);
       onToggleCollapse?.();
       return;
     }
-    setInnerCollapsed((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(COLLAPSED_KEY, next ? '1' : '0');
-      } catch {}
-      return next;
-    });
-  }, [controlled, onToggleCollapse]);
+    setAnimate(true);
+    const next = !innerCollapsed;
+    collapsedCache = next;
+    try {
+      localStorage.setItem(COLLAPSED_KEY, next ? '1' : '0');
+    } catch {}
+    setInnerCollapsed(next);
+  }, [controlled, onToggleCollapse, innerCollapsed]);
 
   // Ctrl/Cmd + B toggles the sidebar
   useEffect(() => {
@@ -353,7 +367,9 @@ export default function SideNavBar({
       {/* Desktop sidebar (shrinkable) */}
       <aside
         style={{ width: collapsed ? 76 : 256 }}
-        className="hidden shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white transition-[width] duration-200 motion-reduce:transition-none md:flex"
+        className={`hidden shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white md:flex ${
+          animate ? 'transition-[width] duration-200 motion-reduce:transition-none' : ''
+        }`}
       >
         <Brand showLabel={!collapsed} />
         <SidebarBody showLabels={!collapsed} path={path} onLogout={onLogout} onToggleCollapse={toggle} />
