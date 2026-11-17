@@ -96,7 +96,7 @@ export default function LoginPage() {
                 HKD OUTDOOR INNOVATIONS LTD
               </h1>
               <span className="text-[10px] font-semibold uppercase tracking-[0.35em] text-amber-600">
-                Attendance ERP
+                HKD ERP
               </span>
             </div>
           </div>
