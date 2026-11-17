@@ -1,121 +1,91 @@
-// backend/models/model.js
-// All database models and schemas in one file.
+/*
+=========================================================
+IMPORTANT AI DEVELOPER INSTRUCTIONS - DATABASE DESIGN
+=========================================================
 
-const mongoose = require('mongoose');
+1. DO NOT create unnecessary MySQL tables.
 
-// ---- Attendance (raw device punch) ----
-const attendanceSchema = new mongoose.Schema({
-  userId: { type: String, required: true },
-  timestamp: { type: Date, required: true },
-  device: String,
+2. Always try to keep the total number of database
+   tables as LOW as reasonably possible.
+
+3. Do not create separate tables for every small feature
+   or related information.
+
+4. Prefer adding related fields to an existing table
+   whenever it is logically appropriate.
+
+5. Use MySQL JSON columns for nested objects or grouped
+   data when appropriate.
+
+6. Follow MongoDB-like object-based data structures
+   wherever practical.
+
+7. Before creating a new table, ALWAYS check whether
+   the required information can be added to an existing
+   table or stored using a JSON column.
+
+8. Never create a new table without a clear functional
+   requirement.
+
+9. Avoid unnecessary relationships, JOIN operations,
+   and overcomplicated database normalization.
+
+10. Keep the database schema simple, centralized,
+    flexible, and easy to maintain.
+
+11. When modifying the database schema in the future,
+    preserve existing tables and data whenever possible.
+
+12. Do not sacrifice data integrity or create an
+    inefficient structure just to reduce table count.
+
+IMPORTANT:
+MySQL is the required database, but I prefer
+MongoDB-like flexible object structures.
+
+Fewer tables, simpler architecture, and maintainability
+are my primary database design preferences.
+
+AI MUST READ AND FOLLOW THESE INSTRUCTIONS BEFORE
+ADDING, MODIFYING, OR CREATING DATABASE TABLES.
+=========================================================
+*/
+
+/**
+ * backend/models/model.js
+ *
+ * Every table of the project is defined in this single file.
+ *
+ * Current schema: exactly ONE table.
+ *
+ * users
+ * -----
+ * id              auto-increment primary key
+ * username        unique login name (3-30 chars, validated in the controller)
+ * password        plain text for now (temporary local development only)
+ * profile_picture public path of the uploaded image, e.g. /uploads/<uuid>.png
+ * work            JSON column holding the organisation details as one object:
+ *                 { factory, floor, department, designation }
+ *                 JSON instead of four extra tables/relations, so more
+ *                 work-related fields can be added without new tables.
+ * created_at      registration timestamp
+ *
+ * Why one table: registration describes a single user. Factory, floor,
+ * department and designation are attributes of that user (not separate
+ * entities with their own lifecycle), so a JSON column is the simplest
+ * correct structure. Add a new table only for a genuinely new entity.
+ */
+
+const { int, json, mysqlTable, timestamp, varchar } = require('drizzle-orm/mysql-core');
+
+const users = mysqlTable('users', {
+  id: int('id').autoincrement().primaryKey(),
+  username: varchar('username', { length: 60 }).notNull().unique(),
+  password: varchar('password', { length: 255 }).notNull(),
+  profilePicture: varchar('profile_picture', { length: 500 }),
+  // { factory: string, floor: string, department: string, designation: string }
+  work: json('work').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 });
-attendanceSchema.index({ userId: 1, timestamp: 1, device: 1 }, { unique: true }); // একই পাঞ্চ দুইবার সেভ হবে না
-attendanceSchema.index({ device: 1, timestamp: -1 }); // sync: latest punch lookup (findOne + sort) fast
-const Attendance = mongoose.model('Attendance', attendanceSchema);
 
-// ---- DeviceUser ----
-const DeviceUser = mongoose.model(
-  'DeviceUser',
-  new mongoose.Schema({
-    userId: { type: String, unique: true },
-    name: String,
-  })
-);
-
-// ---- Employee ----
-const employeeSchema = new mongoose.Schema(
-  {
-    employeeId: { type: String, required: true, unique: true, trim: true },
-    name: { type: String, required: true, trim: true },
-    joinDate: { type: Date },
-    grade: { type: String, trim: true, default: '' },
-    line: { type: String, trim: true, default: '' },
-    designation: { type: String, trim: true, default: '' },
-    department: { type: String, trim: true, default: '' },
-    section: { type: String, trim: true, default: '' },
-    subSection: { type: String, trim: true, default: '' },
-    cardNo: { type: String, trim: true, default: '' },
-    // ডিভাইসের User ID = Proximity Id (এটাই মূল ম্যাচিং কী)
-    proximityId: { type: String, required: true, unique: true, trim: true },
-  },
-  { timestamps: true }
-);
-const Employee = mongoose.model('Employee', employeeSchema);
-
-// ---- Holiday ----
-const holidaySchema = new mongoose.Schema(
-  {
-    date: { type: String, required: true, unique: true }, // yyyy-mm-dd (Asia/Dhaka)
-    name: { type: String, required: true, trim: true },
-  },
-  { timestamps: true }
-);
-const Holiday = mongoose.model('Holiday', holidaySchema);
-
-// ---- Leave ----
-const leaveSchema = new mongoose.Schema(
-  {
-    employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
-    date: { type: String, required: true }, // yyyy-mm-dd (Asia/Dhaka)
-    type: { type: String, enum: ['CL', 'SL', 'EL'], required: true },
-    note: { type: String, trim: true, default: '' },
-  },
-  { timestamps: true }
-);
-leaveSchema.index({ employee: 1, date: 1 }, { unique: true }); // ek din-e ekta-i leave
-const Leave = mongoose.model('Leave', leaveSchema);
-
-// ---- AttendanceEdit (manual override; raw punch kokhono change hoy na) ----
-const attendanceEditSchema = new mongoose.Schema(
-  {
-    employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
-    date: { type: String, required: true }, // yyyy-mm-dd (Asia/Dhaka)
-    inTime: { type: String, default: '' }, // 'HH:MM' ba khali = device punch
-    outTime: { type: String, default: '' }, // 'HH:MM' ba khali = device punch
-    otMinutes: { type: Number, default: null, min: 0 }, // null = auto hisab
-    note: { type: String, trim: true, default: '' },
-  },
-  { timestamps: true }
-);
-attendanceEditSchema.index({ employee: 1, date: 1 }, { unique: true }); // ek din-e ekta-i edit
-const AttendanceEdit = mongoose.model('AttendanceEdit', attendanceEditSchema);
-
-// ---- Setting (Admin Settings, ekta-i document, key = 'main') ----
-// Purono .env-er WEEKEND_DAYS thakle shetai prothom default hobe (backward compatible)
-const envWeekend = () => {
-  const v = String(process.env.WEEKEND_DAYS ?? '5')
-    .split(',')
-    .map((s) => Number(s.trim()))
-    .filter((n) => Number.isInteger(n) && n >= 0 && n <= 6);
-  return v.length ? v : [5];
-};
-
-const settingSchema = new mongoose.Schema(
-  {
-    key: { type: String, default: 'main', unique: true },
-    officeStart: { type: String, default: '07:30' },
-    officeEnd: { type: String, default: '16:30' },
-    lunchStart: { type: String, default: '12:00' },
-    lunchEnd: { type: String, default: '13:00' },
-    weekendDays: { type: [Number], default: envWeekend }, // 0=Sun ... 6=Sat
-    otRoundMin: { type: Number, default: 15, min: 0, max: 59 }, // full ghontar koto min age porjonto round-up hobe
-    companyName: { type: String, default: 'HKD Outdoor Innovations Ltd.' },
-    companyAddress: { type: String, default: 'Plot # 45-50, Sector#2, KEPZ, Chittagong.' },
-  },
-  { timestamps: true }
-);
-
-settingSchema.statics.current = async function () {
-  let s = await this.findOne({ key: 'main' });
-  if (!s) {
-    try {
-      s = await this.create({ key: 'main' });
-    } catch {
-      s = await this.findOne({ key: 'main' });
-    }
-  }
-  return s;
-};
-const Setting = mongoose.model('Setting', settingSchema);
-
-module.exports = { Attendance, DeviceUser, Employee, Holiday, Leave, Setting, AttendanceEdit };
+module.exports = { users };

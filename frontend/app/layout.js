@@ -1,24 +1,14 @@
-// frontend/app/layout.js
-
 import './globals.css';
 
 export const metadata = {
-  title: 'HKD Attendance MS',
-  description: 'ZKTeco attendance system',
-  icons: {
-    icon: '/HKD_LOGO.png',
-    shortcut: '/HKD_LOGO.png',
-    apple: '/HKD_LOGO.png',
-  },
+  title: 'ERP Authentication',
+  description: 'User registration and login for the ERP suite.',
 };
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <head>
-        <link rel="icon" href="/HKD_LOGO.png" type="image/png" />
-      </head>
-      <body>{children}</body>
+      <body className="min-h-screen bg-slate-100 text-slate-900 antialiased">{children}</body>
     </html>
   );
 }

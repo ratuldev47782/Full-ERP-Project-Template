@@ -12,6 +12,10 @@ dist/
 build/
 coverage/
 
+# Uploaded profile pictures (keep the folder itself)
+backend/uploads/*
+!backend/uploads/.gitkeep
+
 # Logs
 *.log
 logs/

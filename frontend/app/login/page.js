@@ -1,41 +1,16 @@
-// frontend/app/login/page.js
-
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
-const API = process.env.NEXT_PUBLIC_API || 'http://localhost:5000';
-
-const authHeader = () => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-  return token ? { Authorization: `Bearer ${token}` } : {};
-};
-
-const unauthorized = () => {
-  localStorage.removeItem('token');
-  window.location.href = '/login';
-  throw new Error('Unauthorized');
-};
-
-async function api(path, options = {}) {
-  const res = await fetch(API + path, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...authHeader(), ...options.headers },
-  });
-  if (res.status === 401 && path !== '/api/login') unauthorized();
-  if (!res.headers.get('content-type')?.includes('application/json')) {
-    throw new Error(`API returned a non-JSON response (HTTP ${res.status}). Check the API URL and backend route.`);
-  }
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Request failed');
-  return data;
-}
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 const input =
   'w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 ' +
   'placeholder:text-slate-400 outline-none transition ' +
-  'hover:border-slate-400 focus:border-amber-500 focus:ring-2 focus:ring-amber-400/30';
+  'hover:border-slate-400 focus:border-amber-500 focus:ring-2 focus:ring-amber-400/30 ' +
+  'disabled:cursor-not-allowed disabled:bg-slate-100';
 
 const Icon = ({ children }) => (
   <svg
@@ -60,24 +35,36 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (localStorage.getItem('token')) router.replace('/dashboard');
-  }, [router]);
-
-  const submit = async (e) => {
-    e.preventDefault();
+  const submit = async (event) => {
+    event.preventDefault();
     if (loading) return;
-    setLoading(true);
+
+    const trimmedUsername = username.trim();
+    if (!trimmedUsername || !password) {
+      setError('Enter your user name and password.');
+      return;
+    }
+
     setError('');
+    setLoading(true);
+
     try {
-      const { token } = await api('/api/login', {
+      const response = await fetch(`${API_URL}/api/auth/login`, {
         method: 'POST',
-        body: JSON.stringify({ username: username.trim(), password }),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ username: trimmedUsername, password }),
       });
-      localStorage.setItem('token', token);
-      router.replace('/dashboard');
-    } catch (err) {
-      setError(err.message);
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Login failed. Please try again.');
+      }
+
+      router.replace('/');
+      router.refresh();
+    } catch (requestError) {
+      setError(requestError.message);
       setLoading(false);
     }
   };
@@ -95,11 +82,10 @@ export default function LoginPage() {
         <div className="hidden flex-col items-center justify-center gap-6 bg-gradient-to-br from-amber-50 to-amber-100/60 p-8 md:flex">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/mobile-login-animate.svg" alt="Person logging in on a mobile device" className="w-full max-w-sm" />
-          
         </div>
 
         {/* Form */}
-        <form onSubmit={submit} className="flex flex-col justify-center">
+        <form onSubmit={submit} noValidate className="flex flex-col justify-center">
           {/* Brand header */}
           <div className="flex items-center justify-center gap-3 border-b border-slate-200 bg-slate-50 px-6 py-5">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -123,19 +109,19 @@ export default function LoginPage() {
 
             <div>
               <label htmlFor="username" className="mb-1.5 block text-xs font-medium text-slate-600">
-                Username
+                User name
               </label>
               <div className="relative">
                 <input
                   id="username"
-                  required
                   autoFocus
                   autoComplete="username"
                   autoCapitalize="none"
                   spellCheck={false}
-                  placeholder="Enter your username"
+                  placeholder="Enter your user name"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
+                  disabled={loading}
                   className={`peer ${input}`}
                 />
                 <Icon>
@@ -152,12 +138,12 @@ export default function LoginPage() {
               <div className="relative">
                 <input
                   id="password"
-                  required
                   type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
                   placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  disabled={loading}
                   className={`peer ${input} pr-14`}
                 />
                 <Icon>
@@ -189,13 +175,20 @@ export default function LoginPage() {
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-400 py-2.5 text-sm font-semibold text-slate-900 shadow-sm outline-none transition hover:bg-amber-500 focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
             >
               {loading && (
-                <svg className="h-4 w-4 animate-spin motion-reduce:animate-none" viewBox="0 0 24 24" fill="none">
+                <svg className="h-4 w-4 animate-spin motion-reduce:animate-none" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
                   <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
                 </svg>
               )}
               {loading ? 'Signing in…' : 'Sign in'}
             </button>
+
+            <p className="border-t border-slate-100 pt-5 text-center text-sm text-slate-500">
+              Don&apos;t have an account?{' '}
+              <Link href="/register" className="font-semibold text-amber-600 transition hover:text-amber-700">
+                Create one
+              </Link>
+            </p>
           </div>
         </form>
       </div>

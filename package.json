@@ -1,9 +1,11 @@
 {
-  "dependencies": {
-    "@tailwindcss/postcss": "^4.3.3",
-    "lucide-react": "^1.66.0",
-    "pdfkit": "^0.20.2",
-    "postcss": "^8.5.32",
-    "tailwindcss": "^4.3.3"
+  "name": "erp-auth",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "install:all": "npm --prefix backend install && npm --prefix frontend install",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "db:push": "npm --prefix backend run db:push"
   }
 }
