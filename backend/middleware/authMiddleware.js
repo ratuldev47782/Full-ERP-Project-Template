@@ -1,3 +1,5 @@
+// backend/middleware/authMiddleware.js
+
 /**
  * backend/middleware/authMiddleware.js
  *
