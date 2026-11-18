@@ -59,6 +59,9 @@ function normalizeWork(value) {
   }
 }
 
+/** True when the user's designation is "Admin" (case-insensitive). */
+const isAdmin = (row) => (normalizeWork(row.work).designation || '').toLowerCase() === 'admin';
+
 /** Never send the password to the browser. */
 function toPublicUser(row) {
   return {
@@ -142,6 +145,11 @@ async function registerUser(req, res, next) {
 
     const work = readWork(body);
 
+    // Admins are created by promoting a user (Manage users page or SQL), never by self-registration.
+    if (work.designation.toLowerCase() === 'admin') {
+      throw new HttpError(403, 'Admin accounts cannot be created from the registration form.');
+    }
+
     const existing = await db
       .select({ id: users.id })
       .from(users)
@@ -217,6 +225,11 @@ async function getCurrentUser(req, res, next) {
 
 module.exports = {
   HttpError,
+  asText,
+  isAdmin,
+  readWork,
+  toPublicUser,
+  USERNAME_PATTERN,
   uploadProfilePicture,
   registerUser,
   loginUser,

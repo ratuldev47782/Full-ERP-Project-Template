@@ -31,6 +31,7 @@ const DESIGNATIONS = [
   'Assistant Manager',
   'Manager',
   'General Manager',
+  'admin'
 ];
 
 const PICTURE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
