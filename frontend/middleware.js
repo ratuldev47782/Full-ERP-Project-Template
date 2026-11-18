@@ -1,3 +1,5 @@
+// frontend/middleware.js
+
 import { NextResponse } from 'next/server';
 
 // Same cookie the Express API sets. Cookies are shared across localhost ports,
