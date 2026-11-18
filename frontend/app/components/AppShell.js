@@ -17,79 +17,55 @@ export const isAdminUser = (user) => (user?.work?.designation || '').toLowerCase
  * Wrapper for every protected page: page background, font, side navbar,
  * and the signed-in user.
  *
+ * The logged-in check is just localStorage: the user details saved at login are
+ * the session. No user details -> back to the login page.
+ *
  * Usage:
  *   <AppShell>{({ user, isAdmin }) => <YourPage />}</AppShell>
  */
 export default function AppShell({ children }) {
   const router = useRouter();
   const [user, setUser] = useState(null);
-  const [error, setError] = useState('');
-  const [signingOut, setSigningOut] = useState(false);
+  const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    let active = true;
+    const stored = window.localStorage.getItem('erp_user');
 
-    fetch(`${API_URL}/api/auth/me`, { credentials: 'include', cache: 'no-store' })
-      .then(async (response) => {
-        if (response.status === 401) {
-          router.replace('/login');
-          return null;
-        }
-
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error || 'Could not load your account.');
-
-        return data.user;
-      })
-      .then((value) => {
-        if (active && value) setUser(value);
-      })
-      .catch((requestError) => {
-        if (active) setError(requestError.message);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [router]);
-
-  const signOut = async () => {
-    if (signingOut) return;
-    setSigningOut(true);
+    if (!stored) {
+      router.replace('/login');
+      return;
+    }
 
     try {
-      await fetch(`${API_URL}/api/auth/logout`, { method: 'POST', credentials: 'include' });
-    } finally {
+      setUser(JSON.parse(stored));
+      setChecking(false);
+    } catch {
+      window.localStorage.removeItem('erp_user');
       router.replace('/login');
-      router.refresh();
     }
+  }, [router]);
+
+  const signOut = () => {
+    window.localStorage.removeItem('erp_user');
+    router.replace('/login');
   };
 
   const isAdmin = isAdminUser(user);
 
   return (
     <div className={`flex h-screen bg-zinc-100 text-zinc-900 ${plex.className}`}>
-      <SideNavBar user={user} isAdmin={isAdmin} onSignOut={signOut} signingOut={signingOut} />
+      <SideNavBar user={user} isAdmin={isAdmin} onSignOut={signOut} />
 
       <div className="flex min-w-0 flex-1 flex-col">
         <main className="flex-1 overflow-auto p-4 pt-16 md:p-5 md:pt-5">
-          {error ? (
-            <div
-              role="alert"
-              className="rounded-md border border-l-4 border-zinc-300 border-l-red-700 bg-white px-4 py-2.5 text-sm text-red-700"
-            >
-              {error}
-            </div>
-          ) : null}
-
-          {!user && !error ? (
+          {checking ? (
             <div className="flex items-center gap-2 px-1 text-sm text-zinc-500">
               <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-              Loading your account…
+              Checking your login…
             </div>
           ) : null}
 
-          {user ? children({ user, isAdmin }) : null}
+          {!checking && user ? children({ user, isAdmin }) : null}
         </main>
       </div>
     </div>

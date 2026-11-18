@@ -5,8 +5,7 @@ import { Loader2, Pencil, Search, Trash2, X } from 'lucide-react';
 
 import AppShell, { API_URL } from '../components/AppShell';
 
-// Same dropdown values as the register page, plus "Admin" (admins can promote users here;
-// the public register form does not offer it).
+// Same dropdown values as the register page (both list "Admin").
 const FACTORIES = ['Main Factory', 'Unit 2', 'Unit 3', 'Corporate Office'];
 const FLOORS = ['Ground Floor', '1st Floor', '2nd Floor', '3rd Floor', '4th Floor'];
 const DEPARTMENTS = [
@@ -91,8 +90,7 @@ function EditDialog({ target, currentUserId, onClose, onSaved }) {
     try {
       const response = await fetch(`${API_URL}/api/users/${target.id}`, {
         method: 'PATCH',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-user-id': String(currentUserId) },
         body: JSON.stringify({ ...form, username: form.username.trim() }),
       });
       const data = await response.json().catch(() => ({}));
@@ -216,7 +214,7 @@ function EditDialog({ target, currentUserId, onClose, onSaved }) {
   );
 }
 
-function DeleteDialog({ target, onClose, onDeleted }) {
+function DeleteDialog({ target, currentUserId, onClose, onDeleted }) {
   const [error, setError] = useState('');
   const [deleting, setDeleting] = useState(false);
 
@@ -228,7 +226,7 @@ function DeleteDialog({ target, onClose, onDeleted }) {
     try {
       const response = await fetch(`${API_URL}/api/users/${target.id}`, {
         method: 'DELETE',
-        credentials: 'include',
+        headers: { 'x-user-id': String(currentUserId) },
       });
       const data = await response.json().catch(() => ({}));
 
@@ -302,7 +300,10 @@ function ManageUsers({ user: me, isAdmin }) {
     setError('');
 
     try {
-      const response = await fetch(`${API_URL}/api/users`, { credentials: 'include', cache: 'no-store' });
+      const response = await fetch(`${API_URL}/api/users`, {
+        headers: { 'x-user-id': String(me.id) },
+        cache: 'no-store',
+      });
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) throw new Error(data.error || 'Could not load users.');
@@ -502,7 +503,12 @@ function ManageUsers({ user: me, isAdmin }) {
       </div>
 
       {removing ? (
-        <DeleteDialog target={removing} onClose={() => setRemoving(null)} onDeleted={handleDeleted} />
+        <DeleteDialog
+          target={removing}
+          currentUserId={me.id}
+          onClose={() => setRemoving(null)}
+          onDeleted={handleDeleted}
+        />
       ) : null}
 
       {editing ? (

@@ -1,54 +1,51 @@
 /**
  * backend/middleware/authMiddleware.js
  *
- * One simple authentication check for the Express API.
+ * The only authentication check the API needs.
  *
- * A session is just an httpOnly cookie holding { id, username }. No token
- * library and no server-side session store: `authMiddleware` only needs to know
- * whether the cookie is present and valid, and controllers that need the real
- * user read that row from MySQL by id.
+ * There are no tokens, cookies or server-side sessions: after logging in the
+ * browser stores the user details in localStorage and sends the signed-in
+ * user's id in the `x-user-id` header. This middleware loads that row from MySQL
+ * so the check is always against real data, and admin rules are decided by the
+ * database instead of anything the browser claims about permissions.
  */
 
-const SESSION_COOKIE = 'erp_session';
+const { eq } = require('drizzle-orm');
 
-/** Build the cookie value for a signed-in user. */
-function createSessionValue(user) {
-  return encodeURIComponent(JSON.stringify({ id: user.id, username: user.username }));
+const { db } = require('../config/db');
+const { users } = require('../models/model');
+const { HttpError, isAdmin } = require('../controllers/userControllers/userController');
+
+/** The id the browser sent for the signed-in user, or null when missing/invalid. */
+function readUserId(req) {
+  const id = Number(req.get('x-user-id'));
+  return Number.isInteger(id) && id > 0 ? id : null;
 }
 
-/** Read a cookie value back. Returns null when it is missing or malformed. */
-function readSessionValue(value) {
-  if (!value) return null;
-
+async function authMiddleware(req, res, next) {
   try {
-    const session = JSON.parse(decodeURIComponent(value));
-    if (!session || !Number.isInteger(session.id) || typeof session.username !== 'string') {
-      return null;
+    const id = readUserId(req);
+    if (!id) throw new HttpError(401, 'You are not signed in.');
+
+    const [user] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    if (!user) throw new HttpError(401, 'You are not signed in.');
+
+    req.currentUser = user;
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+}
+
+/** Signed in AND designation is Admin. */
+function adminMiddleware(req, res, next) {
+  return authMiddleware(req, res, (error) => {
+    if (error) return next(error);
+    if (!isAdmin(req.currentUser)) {
+      return next(new HttpError(403, 'Only admins can manage users.'));
     }
-    return session;
-  } catch {
-    return null;
-  }
+    return next();
+  });
 }
 
-/**
- * Blocks any request that has no valid session cookie.
- * Usage: router.get('/auth/me', authMiddleware, userController.getCurrentUser)
- */
-function authMiddleware(req, res, next) {
-  const session = readSessionValue(req.cookies?.[SESSION_COOKIE]);
-
-  if (!session) {
-    return res.status(401).json({ error: 'You are not signed in.' });
-  }
-
-  req.session = session;
-  return next();
-}
-
-module.exports = {
-  SESSION_COOKIE,
-  createSessionValue,
-  readSessionValue,
-  authMiddleware,
-};
+module.exports = { readUserId, authMiddleware, adminMiddleware };

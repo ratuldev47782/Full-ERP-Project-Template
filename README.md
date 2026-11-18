@@ -1,9 +1,25 @@
-# ERP Authentication (Next.js frontend + Express backend)
+# HKD ERP — Authentication foundation
 
-A minimal foundation for the ERP: user registration and user login only.
+Minimal login/registration foundation for the ERP.
 
 - `frontend/` — Next.js App Router, JavaScript, Tailwind CSS
 - `backend/` — Express, MySQL, Drizzle ORM
+
+## Authentication (no JWT, no tokens, no sessions, no cookies)
+
+1. Login (or registration) returns the user object from the API.
+2. The frontend saves it in `localStorage` under `erp_user`.
+3. `AppShell` (wrapper of every protected page) reads `localStorage`:
+   no user → redirect to `/login`; user → render the page.
+4. `/login` does the opposite: a stored user → redirect to `/`.
+5. Sign out removes `erp_user` and redirects to `/login`.
+
+The Navbar shows the username and designation from that stored object.
+
+For the admin endpoints the browser sends the signed-in user's id in an
+`x-user-id` header; the server loads that user from MySQL and checks
+`work.designation === 'Admin'`. Everything here is client-side state, so this is
+a development template: anyone can edit `localStorage`.
 
 ## Setup
 
@@ -13,69 +29,62 @@ A minimal foundation for the ERP: user registration and user login only.
    npm run install:all
    ```
 
-2. Create the MySQL database:
+2. Create the database and set the credentials in `backend/.env`:
 
    ```sql
-   CREATE DATABASE erp_auth CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+   CREATE DATABASE HKD_ERP_DB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
    ```
 
-3. Set your MySQL credentials in `backend/.env`.
-
-4. Create the table defined in `backend/models/model.js`:
+3. Create the tables from `backend/models/model.js`:
 
    ```bash
    npm run db:push
    ```
 
-5. Run both servers (separate terminals):
+4. Run both servers (separate terminals):
 
    ```bash
    npm run dev:backend    # http://localhost:5000
    npm run dev:frontend   # http://localhost:3000
    ```
 
-   Open http://localhost:3000 → you are redirected to `/login`.
-
-## Pages
-
-| Page | Path | Notes |
-| --- | --- | --- |
-| Login | `/login` | User name + password |
-| Registration | `/register` | 7 fields incl. profile picture |
-| Protected home | `/` | Only reachable while signed in |
-
 ## API (Express)
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
-| POST | `/api/auth/register` | Register (multipart form + optional picture) |
-| POST | `/api/auth/login` | Log in and start the session cookie |
-| POST | `/api/auth/logout` | End the session |
-| GET | `/api/auth/me` | Current user (401 when signed out) |
+| POST | `/api/auth/register` | Register (multipart form + optional picture), return the user |
+| POST | `/api/auth/login` | Check user name + password, return the user |
+| GET | `/api/users` | List users (admin, `x-user-id` header) |
+| PATCH | `/api/users/:id` | Edit a user (admin) |
+| DELETE | `/api/users/:id` | Delete a user (admin) |
 
 ## Structure
 
 ```
 backend/
-  server.js                              Express app (CORS, cookies, static uploads, errors)
+  server.js                              Express app (CORS, static uploads, errors)
   config/db.js                           MySQL pool + Drizzle instance
   models/model.js                        All Drizzle schemas (single `users` table)
   routes/route.js                        All API route definitions
-  controllers/userControllers/userController.js
-  middleware/authMiddleware.js           Session cookie check for protected routes
+  controllers/userControllers/userController.js    register / login
+  controllers/userControllers/adminController.js   user management (admin)
+  middleware/authMiddleware.js           x-user-id guard + admin check
   uploads/                               Saved profile pictures
 
 frontend/
-  middleware.js                          Redirects signed-out visitors to /login
-  app/login/page.js
-  app/register/page.js
-  app/page.js                            Protected page
+  app/(Auth-Pages)/login/page.js         Login
+  app/(Auth-Pages)/register/page.js      Registration
+  app/page.js                            Dashboard (protected)
+  app/users/page.js                      Manage users (admin only)
+  app/components/AppShell.js             localStorage login check + layout
+  app/components/SideNavBar.js           Navbar with user details
 ```
 
 ## Development notes
 
 - **Passwords are stored as plain text** in this local development version.
-  Add hashing and secure session management before deploying anywhere real.
-- The session is a simple `httpOnly` cookie (`erp_session`); no auth library.
-- Dropdown options are defined at the top of `frontend/app/register/page.js`,
-  so no extra options table or file is needed.
+- The registration form accepts **Admin** as a designation, so a new admin can be
+  created there. Admin rights still come from the database row (`work.designation`),
+  not from localStorage.
+- Dropdown options are defined at the top of the register page (and the users
+  page for admins), so no extra options table or file is needed.

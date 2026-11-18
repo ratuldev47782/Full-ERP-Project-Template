@@ -1,9 +1,11 @@
 /**
  * backend/controllers/userControllers/adminController.js
  *
- * Admin-only user management: list users and edit a user's info.
- * "Admin" = work.designation is "Admin". The check is done against the
- * database on every request (never trusted from the cookie alone).
+ * Admin-only user management: list users and edit/delete a user.
+ *
+ * Admin = work.designation is "Admin". The check happens in
+ * middleware/authMiddleware.js (adminMiddleware), which loads the signed-in user
+ * from MySQL and attaches it as req.currentUser.
  */
 
 const path = require('path');
@@ -16,28 +18,12 @@ const { users } = require('../../models/model');
 const {
   HttpError,
   asText,
-  isAdmin,
   readWork,
   toPublicUser,
   USERNAME_PATTERN,
 } = require('./userController');
 
 const UPLOAD_DIR = path.join(__dirname, '..', '..', 'uploads');
-
-/** Middleware: only lets signed-in users whose designation is Admin through. */
-async function requireAdmin(req, res, next) {
-  try {
-    const [me] = await db.select().from(users).where(eq(users.id, req.session.id)).limit(1);
-
-    if (!me) throw new HttpError(401, 'You are not signed in.');
-    if (!isAdmin(me)) throw new HttpError(403, 'Only admins can manage users.');
-
-    req.currentUser = me;
-    next();
-  } catch (error) {
-    next(error);
-  }
-}
 
 /** GET /api/users */
 async function listUsers(req, res, next) {
@@ -128,4 +114,4 @@ async function deleteUser(req, res, next) {
   }
 }
 
-module.exports = { requireAdmin, listUsers, updateUser, deleteUser };
+module.exports = { listUsers, updateUser, deleteUser };

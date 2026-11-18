@@ -4,7 +4,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -37,6 +37,13 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Already logged in on this browser? Go straight to the home page.
+  useEffect(() => {
+    if (window.localStorage.getItem('erp_user')) {
+      router.replace('/');
+    }
+  }, [router]);
+
   const submit = async (event) => {
     event.preventDefault();
     if (loading) return;
@@ -54,7 +61,6 @@ export default function LoginPage() {
       const response = await fetch(`${API_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ username: trimmedUsername, password }),
       });
       const data = await response.json().catch(() => ({}));
@@ -63,8 +69,9 @@ export default function LoginPage() {
         throw new Error(data.error || 'Login failed. Please try again.');
       }
 
+      // That is the whole login: keep the user details in the browser.
+      window.localStorage.setItem('erp_user', JSON.stringify(data.user));
       router.replace('/');
-      router.refresh();
     } catch (requestError) {
       setError(requestError.message);
       setLoading(false);

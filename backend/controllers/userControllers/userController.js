@@ -1,8 +1,10 @@
 /**
  * backend/controllers/userControllers/userController.js
  *
- * All user logic: registration (with profile picture upload), login, logout and
- * "who am I".
+ * User logic: registration (with profile picture upload) and login.
+ *
+ * No tokens, cookies or sessions. Login simply checks the user name and
+ * password and returns the user object; the browser keeps it in localStorage.
  *
  * NOTE: passwords are stored and compared as plain text on purpose. This is a
  * local-development build; add password hashing before any real deployment.
@@ -17,9 +19,7 @@ const { eq } = require('drizzle-orm');
 
 const { db } = require('../../config/db');
 const { users } = require('../../models/model');
-const { SESSION_COOKIE, createSessionValue } = require('../../middleware/authMiddleware');
 
-const SESSION_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 const UPLOAD_DIR = path.join(__dirname, '..', '..', 'uploads');
 const MAX_PICTURE_BYTES = 2 * 1024 * 1024; // 2 MB
 const PICTURE_EXTENSIONS = {
@@ -71,16 +71,6 @@ function toPublicUser(row) {
     profilePicture: row.profilePicture ?? null,
     createdAt: row.createdAt ?? null,
   };
-}
-
-function startSession(res, user) {
-  res.cookie(SESSION_COOKIE, createSessionValue(user), {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    path: '/',
-    maxAge: SESSION_MAX_AGE,
-  });
 }
 
 /** Reads the multipart form; the image is kept in memory until saved. */
@@ -145,10 +135,10 @@ async function registerUser(req, res, next) {
 
     const work = readWork(body);
 
-    // Admins are created by promoting a user (Manage users page or SQL), never by self-registration.
-    if (work.designation.toLowerCase() === 'admin') {
-      throw new HttpError(403, 'Admin accounts cannot be created from the registration form.');
-    }
+    // The designation picked in the form is stored as-is; "Admin" is allowed here.
+    // The API still decides admin rights from the database row, so the browser
+    // cannot grant itself admin by editing localStorage.
+    if (work.designation.toLowerCase() === 'admin') work.designation = 'Admin';
 
     const existing = await db
       .select({ id: users.id })
@@ -171,7 +161,7 @@ async function registerUser(req, res, next) {
 
     const [row] = await db.select().from(users).where(eq(users.id, result.insertId)).limit(1);
 
-    startSession(res, row);
+    // The browser stores this object in localStorage; no cookie or token.
     res.status(201).json({ user: toPublicUser(row) });
   } catch (error) {
     next(error);
@@ -195,28 +185,7 @@ async function loginUser(req, res, next) {
       throw new HttpError(401, 'Incorrect user name or password.');
     }
 
-    startSession(res, user);
-    res.json({ user: toPublicUser(user) });
-  } catch (error) {
-    next(error);
-  }
-}
-
-/** POST /api/auth/logout */
-function logoutUser(req, res) {
-  res.clearCookie(SESSION_COOKIE, { path: '/' });
-  res.json({ ok: true });
-}
-
-/** GET /api/auth/me — protected by authMiddleware. */
-async function getCurrentUser(req, res, next) {
-  try {
-    const [user] = await db.select().from(users).where(eq(users.id, req.session.id)).limit(1);
-
-    if (!user) {
-      throw new HttpError(401, 'You are not signed in.');
-    }
-
+    // The browser stores this object in localStorage; no cookie or token.
     res.json({ user: toPublicUser(user) });
   } catch (error) {
     next(error);
@@ -233,6 +202,4 @@ module.exports = {
   uploadProfilePicture,
   registerUser,
   loginUser,
-  logoutUser,
-  getCurrentUser,
 };

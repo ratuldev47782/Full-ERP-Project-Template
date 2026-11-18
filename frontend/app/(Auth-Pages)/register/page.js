@@ -31,7 +31,7 @@ const DESIGNATIONS = [
   'Assistant Manager',
   'Manager',
   'General Manager',
-  'admin'
+  'Admin',
 ];
 
 const PICTURE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
@@ -202,7 +202,6 @@ export default function RegisterPage() {
 
       const response = await fetch(`${API_URL}/api/auth/register`, {
         method: 'POST',
-        credentials: 'include',
         body: payload,
       });
       const data = await response.json().catch(() => ({}));
@@ -211,8 +210,9 @@ export default function RegisterPage() {
         throw new Error(data.error || 'Registration failed. Please try again.');
       }
 
+      // Registering also logs the user in: keep the details in the browser.
+      window.localStorage.setItem('erp_user', JSON.stringify(data.user));
       router.replace('/');
-      router.refresh();
     } catch (requestError) {
       setError(requestError.message);
       setLoading(false);

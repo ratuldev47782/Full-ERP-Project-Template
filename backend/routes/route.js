@@ -9,21 +9,17 @@ const express = require('express');
 
 const userController = require('../controllers/userControllers/userController');
 const adminController = require('../controllers/userControllers/adminController');
-const { authMiddleware } = require('../middleware/authMiddleware');
+const { adminMiddleware } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
-// ---- Authentication ----
+// ---- Authentication (login returns the user; the browser keeps it in localStorage) ----
 router.post('/auth/register', userController.uploadProfilePicture, userController.registerUser);
 router.post('/auth/login', userController.loginUser);
-router.post('/auth/logout', userController.logoutUser);
 
-// ---- Protected ----
-router.get('/auth/me', authMiddleware, userController.getCurrentUser);
-
-// ---- Admin only (designation = Admin) ----
-router.get('/users', authMiddleware, adminController.requireAdmin, adminController.listUsers);
-router.patch('/users/:id', authMiddleware, adminController.requireAdmin, adminController.updateUser);
-router.delete('/users/:id', authMiddleware, adminController.requireAdmin, adminController.deleteUser);
+// ---- Admin only (designation = Admin), guarded by the x-user-id header ----
+router.get('/users', adminMiddleware, adminController.listUsers);
+router.patch('/users/:id', adminMiddleware, adminController.updateUser);
+router.delete('/users/:id', adminMiddleware, adminController.deleteUser);
 
 module.exports = router;
